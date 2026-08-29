@@ -1,10 +1,10 @@
 ; ============================================================
-;  Barcode Generator Pro - Inno Setup Script
+;  Barcode Generator Pro v2.0.0 - Inno Setup Script
 ;  Produces BarcodeGeneratorPro_Setup.exe
 ; ============================================================
 
 #define MyAppName "Barcode Generator Pro"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Barcode Generator"
 #define MyAppExeName "BarcodeGeneratorPro.exe"
 #define MyAppAssocName "Barcode Generator Pro File"
@@ -39,6 +39,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "dist\BarcodeGeneratorPro.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs
+
+[InstallDelete]
+; Remove any old files before installing new version (proper upgrade)
+Type: files; Name: "{app}\BarcodeGeneratorPro.exe"
+Type: filesandordirs; Name: "{app}\assets"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

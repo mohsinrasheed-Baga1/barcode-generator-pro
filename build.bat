@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Barcode Generator Pro - Windows Build Script
+REM  Barcode Generator Pro v2.0.0 - Windows Build Script
 REM  Run this on a Windows PC to produce the .exe installer.
 REM ============================================================
 setlocal
@@ -27,7 +27,6 @@ if errorlevel 1 (
 
 echo.
 echo === [3/5] Building EXE with PyInstaller ===
-REM Clean previous build
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist BarcodeGenerator.spec del BarcodeGenerator.spec
@@ -42,6 +41,12 @@ pyinstaller --noconfirm ^
     --collect-all barcode ^
     --hidden-import PyQt5.QtPrintSupport ^
     --hidden-import PyQt5.QtSvg ^
+    --hidden-import PyQt5.QtWidgets ^
+    --hidden-import PyQt5.QtGui ^
+    --hidden-import PyQt5.QtCore ^
+    --hidden-import barcode ^
+    --hidden-import barcode.ean ^
+    --hidden-import barcode.writer ^
     main.py
 
 if errorlevel 1 (
@@ -61,7 +66,6 @@ if not defined ISCC (
     echo WARNING: Inno Setup not found. Skipping installer build.
     echo EXE is in: dist\BarcodeGeneratorPro.exe
     echo To create the installer, install Inno Setup 6 from https://jrsoftware.org/isdl.php
-    echo Then run this script again, or run: iscc installer.iss
     pause
     exit /b 0
 )

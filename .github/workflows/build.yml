@@ -63,6 +63,12 @@ jobs:
             --collect-all barcode ^
             --hidden-import PyQt5.QtPrintSupport ^
             --hidden-import PyQt5.QtSvg ^
+            --hidden-import PyQt5.QtWidgets ^
+            --hidden-import PyQt5.QtGui ^
+            --hidden-import PyQt5.QtCore ^
+            --hidden-import barcode ^
+            --hidden-import barcode.ean ^
+            --hidden-import barcode.writer ^
             main.py
 
       - name: Verify EXE exists
@@ -131,10 +137,20 @@ jobs:
               creates Start Menu + Desktop shortcuts.
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new
-            - EAN-13 barcode generator
+            ### What's new in v2.0.0
+            - Interactive Sticker Layout Editor — drag, resize, rotate any element
+            - Barcode optional (Include Barcode toggle)
+            - Save as PDF button — always works, no printer needed
+            - mm / inches unit toggle in Settings
+            - Per-element font family, size, bold, italic, color, alignment
+            - Fixed Print/Preview crash bug (now wrapped in try/except)
+            - Better error messages with "Save as PDF" fallback
+            - Status bar showing current unit, layout, template element count
+
+            ### Older features (still included)
+            - EAN-13 barcode generator with checksum validation
             - Sheet printer mode (A4 — 40/24/80/12 stickers per sheet)
-            - **Label printer mode** (direct — Zebra, TSC, Xprinter, Godex, etc.)
+            - Label printer mode (direct — Zebra, TSC, Xprinter, Godex, etc.)
               with 7 preset label sizes + custom size
             - Company name, product name, product code, Mfg/Exp dates, mobile number
             - Bulk CSV import

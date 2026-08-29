@@ -1,28 +1,141 @@
 """
-Printing module - renders a sheet of stickers to a QPrinter (PDF or physical).
+Printing module - renders a sheet of stickers using a StickerTemplate.
+Handles both sheet printers (multi-sticker per A4) and label printers
+(single label per page).
+
+All rendering uses QPainter. The template defines element positions
+in millimeters; we convert to device pixels using the printer DPI.
 """
-from PyQt5.QtCore import Qt, QRectF, QSizeF
-from PyQt5.QtGui import QPainter, QPageSize, QPageLayout
+from PyQt5.QtCore import Qt, QRectF, QSizeF, QPointF
+from PyQt5.QtGui import (QPainter, QPixmap, QImage, QPageSize, QColor,
+                          QPen, QFont, QFontDatabase, QTransform)
 from PyQt5.QtPrintSupport import QPrinter
 
-from core.barcode_gen import draw_sticker, make_fonts
+from core.barcode_gen import (make_full_ean13, validate_ean13,
+                                generate_ean13_image, draw_sticker,
+                                make_fonts)
 from core.layouts import StickerLayout, sticker_positions
+from core.templates import (StickerTemplate, StickerElement,
+                              get_text_for_element, enabled_elements)
+from core.units import pt_to_mm
 
 
-# Convert millimeters to pixels at a given DPI.
-def mm_to_pixels(mm: float, dpi: float = 300.0) -> float:
-    return mm * dpi / 25.4
+# ---------------------------------------------------------------- helpers
+def _element_to_qfont(elem: StickerElement) -> QFont:
+    """Build a QFont from an element's font settings."""
+    f = QFont(elem.font_family or 'Arial')
+    f.setPointSizeF(float(elem.font_size_pt))
+    f.setBold(bool(elem.bold))
+    f.setItalic(bool(elem.italic))
+    return f
 
 
+def _align_flag(align: str) -> Qt.AlignmentFlag:
+    return {
+        'left': Qt.AlignLeft | Qt.AlignVCenter,
+        'right': Qt.AlignRight | Qt.AlignVCenter,
+        'center': Qt.AlignHCenter | Qt.AlignVCenter,
+    }.get(align, Qt.AlignHCenter | Qt.AlignVCenter)
+
+
+def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
+                  scale: float, sticker_origin: QPointF):
+    """
+    Draw a single element at its position within the sticker.
+    `scale` converts mm -> device pixels.
+    `sticker_origin` is the top-left of the sticker in device pixels.
+    """
+    if not elem.enabled:
+        return
+    # Convert mm -> device pixels
+    w_px = elem.w_mm * scale
+    h_px = elem.h_mm * scale
+    x_px = sticker_origin.x() + elem.x_mm * scale
+    y_px = sticker_origin.y() + elem.y_mm * scale
+
+    painter.save()
+    # Rotate around element center
+    if elem.rotation:
+        cx = x_px + w_px / 2
+        cy = y_px + h_px / 2
+        painter.translate(cx, cy)
+        painter.rotate(elem.rotation)
+        painter.translate(-cx, -cy)
+
+    rect = QRectF(x_px, y_px, w_px, h_px)
+
+    if elem.id == 'barcode':
+        # Draw the barcode image
+        bc = data.get('barcode', '')
+        if not bc:
+            painter.restore()
+            return
+        try:
+            module_w = (w_px / 100) * 0.165
+            img, full_code = generate_ean13_image(
+                bc,
+                module_width=module_w,
+                module_height=h_px * 0.7,
+            )
+            scaled = img.scaled(int(w_px), int(h_px),
+                                Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            tx = x_px + (w_px - scaled.width()) / 2
+            ty = y_px + (h_px - scaled.height()) / 2
+            painter.drawImage(QPointF(tx, ty), scaled)
+        except Exception:
+            pass
+    else:
+        text = get_text_for_element(elem.id, data)
+        if not text:
+            painter.restore()
+            return
+        font = _element_to_qfont(elem)
+        painter.setFont(font)
+        painter.setPen(QColor(elem.color or '#000000'))
+        painter.drawText(rect, _align_flag(elem.align), text)
+
+    painter.restore()
+
+
+def draw_sticker_with_template(painter: QPainter, rect: QRectF,
+                                data: dict, template: StickerTemplate,
+                                scale: float):
+    """Draw a sticker using the template at `rect` (in device pixels)."""
+    painter.save()
+
+    # Background
+    bg = QColor(template.background_color or '#FFFFFF')
+    painter.fillRect(rect, bg)
+
+    # Border
+    if template.border_width_mm > 0:
+        pen = QPen(QColor(template.border_color or '#000000'))
+        pen.setWidthF(template.border_width_mm * scale)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(rect)
+
+    # Elements
+    sticker_w_px = rect.width()
+    sticker_h_px = rect.height()
+    sx = sticker_w_px / (template.sticker_w_mm * scale)
+    sy = sticker_h_px / (template.sticker_h_mm * scale)
+    painter.translate(rect.topLeft())
+    if abs(sx - 1.0) > 0.01 or abs(sy - 1.0) > 0.01:
+        painter.scale(sx, sy)
+
+    for elem in template.elements:
+        _draw_element(painter, elem, data, scale, QPointF(0, 0))
+
+    painter.restore()
+
+
+# ---------------------------------------------------------------- sheet printing
 def print_sticker_sheet(layout: StickerLayout, items: list,
-                        font_sizes: dict = None,
+                        template: StickerTemplate,
                         printer: QPrinter = None,
                         copies: int = 1) -> QPrinter:
-    """
-    Render `items` (list of dicts) into a sheet using `layout`.
-    If `printer` is None, creates a default A4 printer.
-    Returns the printer used (caller can call printer.outputFileName() etc.).
-    """
+    """Render items onto pages using layout + template."""
     if printer is None:
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QSizeF(layout.paper_w_mm, layout.paper_h_mm),
@@ -34,73 +147,36 @@ def print_sticker_sheet(layout: StickerLayout, items: list,
     if not painter.isActive():
         raise RuntimeError("Cannot start painter on printer.")
 
-    fonts = make_fonts(font_sizes or {})
     slots = sticker_positions(layout)
-    slots_per_sheet = len(slots)
+    slots_per_page = len(slots)
+    res = printer.resolution()
+    scale = res / 25.4
 
-    # Page resolution in dots (pixels)
-    page_rect = printer.pageRect(QPrinter.Millimeter)
-    # page_rect is in millimeters — width/height
-    page_w_mm = page_rect.width()
-    page_h_mm = page_rect.height()
-
-    # We render in device pixels, but compute scale factor from mm to device.
-    res = printer.resolution()  # DPI
-    scale = res / 25.4  # dots per mm
-
-    for sheet_idx, start in enumerate(range(0, len(items), slots_per_sheet)):
-        if sheet_idx > 0:
+    page = 0
+    for start in range(0, len(items), slots_per_page):
+        if page > 0:
             printer.newPage()
-        sheet_items = items[start:start + slots_per_sheet]
-        for (pos_x_mm, pos_y_mm), data in zip(slots, sheet_items):
-            # Convert mm to device pixels
+        page += 1
+        page_items = items[start:start + slots_per_page]
+        for (pos_x_mm, pos_y_mm), data in zip(slots, page_items):
             x = pos_x_mm * scale
             y = pos_y_mm * scale
             w = layout.sticker_w_mm * scale
             h = layout.sticker_h_mm * scale
             rect = QRectF(x, y, w, h)
-            # Draw with mm-based font sizes; convert to pixels
-            scaled_sizes = {
-                k: v * scale for k, v in (font_sizes or {}).items()
-            } if font_sizes else _auto_font_sizes(layout, scale)
-            scaled_fonts = make_fonts(scaled_sizes)
-            draw_sticker(painter, rect, data, scaled_fonts)
+            draw_sticker_with_template(painter, rect, data, template, scale)
 
     painter.end()
     return printer
 
 
-def _auto_font_sizes(layout: StickerLayout, scale: float) -> dict:
-    """Auto-size fonts based on sticker physical size (in device pixels)."""
-    # Convert sticker dimensions from mm to pixels
-    sticker_h_px = layout.sticker_h_mm * scale
-    sticker_w_px = layout.sticker_w_mm * scale
-    # Heuristic sizes proportional to sticker height
-    company = max(6, int(sticker_h_px * 0.12))
-    body = max(5, int(sticker_h_px * 0.09))
-    small = max(4, int(sticker_h_px * 0.08))
-    barcode = max(5, int(sticker_h_px * 0.09))
-    return {
-        'company': company,
-        'body': body,
-        'small': small,
-        'barcode_text': barcode,
-    }
-
-
+# ---------------------------------------------------------------- preview
 def render_preview(layout: StickerLayout, items: list,
-                   font_sizes: dict = None,
-                   dpi: int = 150) -> 'QPixmap':
-    """
-    Render the sheet/label to a QPixmap (for on-screen preview).
-    For small label-printer layouts, automatically scale up to a
-    reasonable on-screen size so the label is clearly visible.
-    """
-    from PyQt5.QtGui import QPixmap, QImage
-    # For label mode, render at higher DPI so preview is reasonably sized.
-    # Aim for at least 500 px wide for the preview.
+                   template: StickerTemplate,
+                   dpi: int = 150) -> QPixmap:
+    """Render the sheet/label to a QPixmap (for on-screen preview)."""
     if layout.is_label:
-        dpi = max(dpi, int(500 / (layout.paper_w_mm / 25.4)))  # px per inch
+        dpi = max(dpi, int(500 / (layout.paper_w_mm / 25.4)))
         dpi = max(dpi, 300)
 
     scale = dpi / 25.4
@@ -111,21 +187,54 @@ def render_preview(layout: StickerLayout, items: list,
 
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    painter.setRenderHint(QPainter.Antialiasing, True)
 
-    # Light paper outline
     painter.setPen(Qt.lightGray)
     painter.drawRect(0, 0, pix_w - 1, pix_h - 1)
 
-    fonts = make_fonts(font_sizes or _auto_font_sizes(layout, scale))
     slots = sticker_positions(layout)
-    slots_per_sheet = len(slots)
-    sheet_items = items[:slots_per_sheet]
-    for (pos_x_mm, pos_y_mm), data in zip(slots, sheet_items):
+    slots_per_page = len(slots)
+    page_items = items[:slots_per_page]
+    for (pos_x_mm, pos_y_mm), data in zip(slots, page_items):
         x = pos_x_mm * scale
         y = pos_y_mm * scale
         w = layout.sticker_w_mm * scale
         h = layout.sticker_h_mm * scale
         rect = QRectF(x, y, w, h)
-        draw_sticker(painter, rect, data, fonts)
+        draw_sticker_with_template(painter, rect, data, template, scale)
+
     painter.end()
     return pix
+
+
+def render_single_sticker_preview(template: StickerTemplate, data: dict,
+                                   dpi: int = 200) -> QPixmap:
+    """Render just one sticker (used by the sticker editor)."""
+    scale = dpi / 25.4
+    pix_w = int(template.sticker_w_mm * scale)
+    pix_h = int(template.sticker_h_mm * scale)
+    pix = QPixmap(pix_w, pix_h)
+    pix.fill(Qt.white)
+
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    rect = QRectF(0, 0, pix_w, pix_h)
+    draw_sticker_with_template(painter, rect, data, template, scale)
+    painter.end()
+    return pix
+
+
+# ---------------------------------------------------------------- PDF export
+def export_to_pdf(layout: StickerLayout, items: list,
+                  template: StickerTemplate, pdf_path: str) -> str:
+    """Export the current batch to a PDF file. Always works (no printer needed)."""
+    printer = QPrinter(QPrinter.HighResolution)
+    printer.setOutputFormat(QPrinter.PdfFormat)
+    printer.setOutputFileName(pdf_path)
+    printer.setPageSize(QPageSize(QSizeF(layout.paper_w_mm, layout.paper_h_mm),
+                                   QPageSize.Millimeter))
+    printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+    print_sticker_sheet(layout, items, template, printer=printer, copies=1)
+    return pdf_path

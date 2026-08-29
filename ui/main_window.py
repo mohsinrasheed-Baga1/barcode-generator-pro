@@ -1,13 +1,11 @@
 """
-Main window for the Barcode Generator.
-Bilingual labels (English / Urdu) where helpful.
+Main window for the Barcode Generator (v2.0).
 """
 import os
-import csv
 import json
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import Qt, QSize, QRectF, QDate
+from PyQt5.QtCore import Qt, QSize, QRectF, QDate, QTimer
 from PyQt5.QtGui import (
     QPixmap, QImage, QPainter, QColor, QFont, QPen,
     QIcon, QStandardItemModel, QStandardItem, QPalette, QPageSize
@@ -16,47 +14,62 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
     QLabel, QLineEdit, QPlainTextEdit, QPushButton, QComboBox, QSpinBox,
     QDateEdit, QCheckBox, QTableView, QHeaderView, QTabWidget, QSplitter,
-    QMessageBox, QFileDialog, QDialog, QDialogButtonBox, QGroupBox,
-    QScrollArea, QFrame, QSizePolicy, QApplication
+    QMessageBox, QFileDialog, QDialog, QGroupBox,
+    QScrollArea, QFrame, QSizePolicy, QApplication, QStatusBar
 )
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintDialog
 
-from core.barcode_gen import (make_full_ean13, validate_ean13,
-                                draw_sticker, make_fonts, generate_ean13_image)
+from core.barcode_gen import make_full_ean13, validate_ean13
 from core.database import Database
 from core.csv_import import import_csv, write_csv_template
-from core.layouts import PRESETS, custom_layout, StickerLayout, sticker_positions, total_slots
-from core.printer import print_sticker_sheet, render_preview
-from ui.settings_dialog import SettingsDialog, get_font_sizes_from_settings
+from core.layouts import (PRESETS, SHEET_PRESETS, LABEL_PRESETS,
+                            custom_layout, StickerLayout, sticker_positions,
+                            total_slots, is_label_preset_key)
+from core.templates import (StickerTemplate, StickerElement,
+                              default_template, template_to_json,
+                              template_from_json)
+from core.units import MM, IN, get_unit, format_value
+from core.printer import (print_sticker_sheet, render_preview,
+                            export_to_pdf, render_single_sticker_preview)
+from ui.settings_dialog import (SettingsDialog, get_font_sizes_from_settings,
+                                   get_unit_from_settings)
 from ui.history_dialog import HistoryDialog
+from ui.sticker_editor import StickerEditorDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.resize(1180, 780)
+        self.resize(1240, 820)
 
         self.db = Database()
 
-        # Current batch of items to print (list of dicts)
         self.current_items = []
 
-        # Default company & mobile (saved settings)
         self.default_company = self.db.get_setting('default_company', '')
         self.default_mobile = self.db.get_setting('default_mobile', '')
 
-        # Current layout selection
         self.layout_key = self.db.get_setting('layout_key', 'A4-40')
-        self.custom_layout = None  # if set, override PRESETS
-        self.font_sizes = get_font_sizes_from_settings(self.db)
+        self.custom_layout = None
+
+        self.unit = get_unit(get_unit_from_settings(self.db))
+
+        # Template — load from DB or generate default
+        template_json = self.db.get_setting('sticker_template_json', '')
+        if template_json:
+            try:
+                self.template = template_from_json(template_json)
+            except Exception:
+                self.template = default_template(38, 21.2)
+        else:
+            self.template = default_template(38, 21.2)
 
         self._build_ui()
-        self._restore_settings()
         self._refresh_preview()
 
     # ------------------------------------------------------------------ UI
@@ -64,8 +77,8 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(10)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
 
         # ---- left: input form ----
         left = QWidget()
@@ -75,13 +88,10 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
 
-        # Title
-        title = QLabel("Barcode Generator — EAN-13\nبارکوڈ جنریٹر")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1a4d8f;")
-        title.setAlignment(Qt.AlignCenter)
+        title = QLabel(f"<h2>{APP_TITLE}</h2><i>Version {APP_VERSION}</i>")
+        title.setStyleSheet("color: #1a4d8f;")
         left_layout.addWidget(title)
 
-        # Form group
         form_box = QGroupBox("Sticker Information / اسٹیکر کی معلومات")
         form = QFormLayout(form_box)
         form.setLabelAlignment(Qt.AlignRight)
@@ -94,19 +104,20 @@ class MainWindow(QMainWindow):
         form.addRow("Company Name / کمپنی نام:", self.company_edit)
 
         self.product_edit = QLineEdit()
-        self.product_edit.setPlaceholderText("e.g. Sunlight Soap 200g")
         form.addRow("Product Name / پروڈکٹ نام:", self.product_edit)
 
         self.code_edit = QLineEdit()
-        self.code_edit.setPlaceholderText("e.g. SL-001")
         form.addRow("Product Code / پروڈکٹ کوڈ:", self.code_edit)
 
         self.barcode_edit = QLineEdit()
         self.barcode_edit.setPlaceholderText("12 digits — 13th auto / 12 ہندسے")
         self.barcode_edit.setMaxLength(13)
+        self.barcode_enabled_chk = QCheckBox("Include Barcode / بارکوڈ شامل کریں")
+        self.barcode_enabled_chk.setChecked(True)
+        self.barcode_enabled_chk.toggled.connect(self.on_barcode_enabled_toggled)
         form.addRow("Barcode (EAN-13) / بارکوڈ:", self.barcode_edit)
+        form.addRow("", self.barcode_enabled_chk)
 
-        # Dates row
         dates_row = QHBoxLayout()
         self.mfg_date = QDateEdit()
         self.mfg_date.setDisplayFormat("yyyy-MM-dd")
@@ -127,13 +138,11 @@ class MainWindow(QMainWindow):
         form.addRow("Dates / تاریخیں:", dates_wrap)
 
         self.mobile_edit = QLineEdit()
-        self.mobile_edit.setPlaceholderText("e.g. +92 300 1234567")
         self.mobile_edit.setText(self.default_mobile)
         form.addRow("Mobile / موبائل:", self.mobile_edit)
 
         left_layout.addWidget(form_box)
 
-        # Quantity + Add
         qty_row = QHBoxLayout()
         qty_row.addWidget(QLabel("Quantity / تعداد:"))
         self.qty_spin = QSpinBox()
@@ -143,9 +152,9 @@ class MainWindow(QMainWindow):
         qty_row.addStretch(1)
         left_layout.addLayout(qty_row)
 
-        # Action buttons
         btn_row = QHBoxLayout()
         self.add_btn = QPushButton("➕ Add to Sheet\nشیٹ میں شامل کریں")
+        self.add_btn.setStyleSheet("background: #1a4d8f; color: white; padding: 8px; font-weight: bold;")
         self.add_btn.clicked.connect(self.on_add_clicked)
         btn_row.addWidget(self.add_btn)
 
@@ -154,7 +163,6 @@ class MainWindow(QMainWindow):
         btn_row.addWidget(self.clear_btn)
         left_layout.addLayout(btn_row)
 
-        # Bulk import
         bulk_box = QGroupBox("Bulk Import / بلک امپورٹ (CSV)")
         bulk_layout = QVBoxLayout(bulk_box)
         bulk_btns = QHBoxLayout()
@@ -170,15 +178,14 @@ class MainWindow(QMainWindow):
         bulk_layout.addWidget(self.bulk_status)
         left_layout.addWidget(bulk_box)
 
-        # Sheet layout selector
         layout_box = QGroupBox("Sheet Layout / شیٹ سائز")
         layout_form = QFormLayout(layout_box)
         self.layout_combo = QComboBox()
-        for key, lay in PRESETS.items():
+        for key, lay in SHEET_PRESETS.items():
             self.layout_combo.addItem(lay.name, key)
-        # add custom option if exists
+        for key, lay in LABEL_PRESETS.items():
+            self.layout_combo.addItem(lay.name, key)
         self.layout_combo.addItem("Custom (set in Settings)...", "__custom__")
-        # try to set saved
         idx = self.layout_combo.findData(self.layout_key)
         if idx >= 0:
             self.layout_combo.setCurrentIndex(idx)
@@ -186,10 +193,14 @@ class MainWindow(QMainWindow):
         layout_form.addRow("Layout:", self.layout_combo)
 
         self.layout_info = QLabel("")
-        self.layout_info.setStyleSheet("color: #555; font-size: 11px;")
+        self.layout_info.setStyleSheet("color: #1a4d8f; font-size: 11px; font-weight: bold;")
         layout_form.addRow("", self.layout_info)
 
-        # Print settings
+        self.edit_layout_btn = QPushButton("✏ Edit Sticker Layout\nاسٹیکر لی آؤٹ ایڈیٹ کریں")
+        self.edit_layout_btn.setStyleSheet("background: #f0f0f0; padding: 6px;")
+        self.edit_layout_btn.clicked.connect(self.on_edit_layout_clicked)
+        layout_form.addRow("", self.edit_layout_btn)
+
         self.copies_spin = QSpinBox()
         self.copies_spin.setRange(1, 999)
         self.copies_spin.setValue(1)
@@ -198,7 +209,6 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(layout_box)
 
-        # Print buttons
         print_row = QHBoxLayout()
         self.print_btn = QPushButton("🖨 Print\nپرنٹ")
         self.print_btn.setStyleSheet("background: #1a4d8f; color: white; padding: 10px; font-weight: bold;")
@@ -208,9 +218,13 @@ class MainWindow(QMainWindow):
         self.preview_btn = QPushButton("👁 Preview\nپریویو")
         self.preview_btn.clicked.connect(self.on_preview_clicked)
         print_row.addWidget(self.preview_btn)
+
+        self.pdf_btn = QPushButton("📄 Save as PDF\nPDF محفوظ کریں")
+        self.pdf_btn.setStyleSheet("background: #b85c00; color: white; padding: 10px;")
+        self.pdf_btn.clicked.connect(self.on_save_pdf_clicked)
+        print_row.addWidget(self.pdf_btn)
         left_layout.addLayout(print_row)
 
-        # Settings / History row
         sec_row = QHBoxLayout()
         self.settings_btn = QPushButton("⚙ Settings")
         self.settings_btn.clicked.connect(self.on_settings_clicked)
@@ -234,7 +248,7 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setAlignment(Qt.AlignCenter)
-        scroll.setBackgroundRole(QPalette.Mid)  # neutral gray bg
+        scroll.setBackgroundRole(QPalette.Mid)
         self.preview_label = QLabel()
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setMinimumSize(540, 760)
@@ -242,16 +256,12 @@ class MainWindow(QMainWindow):
         scroll.setWidget(self.preview_label)
         right_layout.addWidget(scroll, 1)
 
-        # Items count info bar
         self.count_label = QLabel("0 stickers in sheet")
         self.count_label.setStyleSheet("padding: 4px; color: #333;")
         right_layout.addWidget(self.count_label)
 
-        # Items list (mini table)
         self.items_model = QStandardItemModel(0, 4)
-        self.items_model.setHorizontalHeaderLabels(
-            ["#", "Barcode", "Product", "Qty"]
-        )
+        self.items_model.setHorizontalHeaderLabels(["#", "Barcode", "Product", "Qty"])
         self.items_table = QTableView()
         self.items_table.setModel(self.items_model)
         self.items_table.setMaximumHeight(160)
@@ -261,7 +271,6 @@ class MainWindow(QMainWindow):
         self.items_table.verticalHeader().setVisible(False)
         right_layout.addWidget(self.items_table)
 
-        # Delete selected button
         del_row = QHBoxLayout()
         self.del_sel_btn = QPushButton("✖ Remove Selected Row")
         self.del_sel_btn.clicked.connect(self.on_remove_selected)
@@ -274,22 +283,55 @@ class MainWindow(QMainWindow):
         root.addWidget(left, 0)
         root.addWidget(right, 1)
 
+        self._build_statusbar()
         self._update_layout_info()
+
+    def _build_statusbar(self):
+        sb = QStatusBar()
+        self.setStatusBar(sb)
+        self.status_unit_label = QLabel()
+        self.status_template_label = QLabel()
+        sb.addWidget(self.status_unit_label)
+        sb.addPermanentWidget(self.status_template_label)
+        self._update_statusbar()
+
+    def _update_statusbar(self):
+        self.status_unit_label.setText(
+            f"Unit: {self.unit.label} ({self.unit.symbol})  |  "
+            f"Layout: {self._current_layout().name}"
+        )
+        n_elements = len(self.template.elements)
+        n_enabled = sum(1 for e in self.template.elements if e.enabled)
+        self.status_template_label.setText(
+            f"Template: {n_enabled}/{n_elements} elements enabled"
+        )
+
+    # ----------------------------------------------------- barcode toggle
+    def on_barcode_enabled_toggled(self, checked: bool):
+        for e in self.template.elements:
+            if e.id in ('barcode', 'barcode_digits'):
+                e.enabled = bool(checked)
+        self.barcode_edit.setEnabled(checked)
+        self._refresh_preview()
+        self._update_statusbar()
 
     # ----------------------------------------------------- event handlers
     def on_add_clicked(self):
-        # Validate barcode
-        bc_raw = self.barcode_edit.text().strip()
-        if not bc_raw:
-            QMessageBox.warning(self, "Missing",
-                                "Please enter a barcode value.\nبراہ کرم بارکوڈ درج کریں۔")
-            return
-        try:
-            full = make_full_ean13(bc_raw)
-        except Exception as e:
-            QMessageBox.warning(self, "Invalid barcode",
-                                f"Could not generate EAN-13: {e}")
-            return
+        if self.barcode_enabled_chk.isChecked():
+            bc_raw = self.barcode_edit.text().strip()
+            if not bc_raw:
+                QMessageBox.warning(self, "Missing",
+                                    "Please enter a barcode value or uncheck 'Include Barcode'.\n"
+                                    "براہ کرم بارکوڈ درج کریں یا 'Include Barcode' کا check ہٹائیں۔")
+                return
+            try:
+                full = make_full_ean13(bc_raw)
+            except Exception as e:
+                QMessageBox.warning(self, "Invalid barcode",
+                                    f"Could not generate EAN-13: {e}")
+                return
+        else:
+            full = ''
 
         data = {
             'company_name': self.company_edit.text().strip(),
@@ -300,11 +342,9 @@ class MainWindow(QMainWindow):
             'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
             'mobile': self.mobile_edit.text().strip(),
         }
-        # Save to history
         try:
             self.db.save_barcode(data)
-        except Exception as e:
-            # ignore db errors
+        except Exception:
             pass
 
         qty = self.qty_spin.value()
@@ -341,11 +381,9 @@ class MainWindow(QMainWindow):
                                  f"Could not import CSV:\n{e}")
             return
         if not rows:
-            QMessageBox.information(self, "Import",
-                                   "No data rows found in CSV.")
+            QMessageBox.information(self, "Import", "No data rows found in CSV.")
             return
         self.current_items.extend(rows)
-        # Save to history
         for r in rows:
             try:
                 self.db.save_barcode(r)
@@ -356,8 +394,7 @@ class MainWindow(QMainWindow):
 
     def on_save_template(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save CSV template", "barcode_template.csv",
-            "CSV Files (*.csv)"
+            self, "Save CSV template", "barcode_template.csv", "CSV Files (*.csv)"
         )
         if not path:
             return
@@ -371,17 +408,14 @@ class MainWindow(QMainWindow):
     def on_layout_changed(self, idx: int):
         key = self.layout_combo.currentData()
         if key == "__custom__":
-            # Try to use the saved custom layout, if any
             prev_key = self.layout_key
             self.on_settings_clicked()
-            # After settings dialog closes, check if we now have a custom layout
             if self.custom_layout is not None:
                 self.layout_key = '__custom__'
             else:
-                # Revert combo to previous selection
                 revert_idx = self.layout_combo.findData(prev_key)
                 if revert_idx < 0:
-                    revert_idx = 0  # fallback to first preset
+                    revert_idx = 0
                 self.layout_combo.blockSignals(True)
                 self.layout_combo.setCurrentIndex(revert_idx)
                 self.layout_combo.blockSignals(False)
@@ -391,6 +425,11 @@ class MainWindow(QMainWindow):
             return
         self.layout_key = key
         self.db.set_setting('layout_key', key)
+        lay = self._current_layout()
+        if lay is not None:
+            self.template.sticker_w_mm = lay.sticker_w_mm
+            self.template.sticker_h_mm = lay.sticker_h_mm
+            self.db.set_setting('sticker_template_json', template_to_json(self.template))
         self._update_layout_info()
         self._refresh_preview()
 
@@ -403,36 +442,30 @@ class MainWindow(QMainWindow):
         lay = self._current_layout()
         if lay.is_label:
             self.layout_info.setText(
-                f"🖨 LABEL PRINTER MODE — direct label printing\n"
-                f"Label: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm\n"
-                f"1 label per print, multiple pages = multiple labels"
+                f"🖨 LABEL PRINTER MODE\n"
+                f"Label: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm"
             )
-            self.layout_info.setStyleSheet("color: #b85c00; font-size: 11px; font-weight: bold;")
         else:
             self.layout_info.setText(
-                f"📄 SHEET PRINTER MODE — A4 multi-label sheet\n"
-                f"{lay.cols} cols × {lay.rows} rows = {total_slots(lay)} stickers/sheet\n"
+                f"📄 SHEET PRINTER MODE\n"
+                f"{lay.cols}×{lay.rows} = {total_slots(lay)} stickers/sheet\n"
                 f"Sticker: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm"
             )
-            self.layout_info.setStyleSheet("color: #1a4d8f; font-size: 11px; font-weight: bold;")
+        self._update_statusbar()
 
     def _refresh_preview(self):
         if not hasattr(self, 'preview_label'):
             return
         lay = self._current_layout()
         try:
-            pix = render_preview(lay, self.current_items,
-                                  font_sizes=self.font_sizes,
-                                  dpi=120)
+            pix = render_preview(lay, self.current_items, self.template, dpi=120)
             self.preview_label.setPixmap(pix)
         except Exception as e:
             self.preview_label.setText(f"Preview error:\n{e}")
 
-        # Update count label
         n = len(self.current_items)
         per_sheet = total_slots(lay)
         if lay.is_label:
-            # Label mode: each item = 1 label = 1 page
             if n > 0:
                 total_prints = n * self.copies_spin.value()
                 self.count_label.setText(
@@ -446,15 +479,11 @@ class MainWindow(QMainWindow):
                 f"{n} stickers — {sheets} sheet(s) will print"
             )
 
-        # Update items table
         self.items_model.removeRows(0, self.items_model.rowCount())
-        idx = 0
-        # Group identical consecutive entries for display
         i = 0
         while i < len(self.current_items):
             d = self.current_items[i]
             qty = 1
-            # Count consecutive duplicates (by barcode + product_code)
             j = i + 1
             while (j < len(self.current_items)
                    and self.current_items[j].get('barcode') == d.get('barcode')
@@ -463,39 +492,48 @@ class MainWindow(QMainWindow):
                    and self.current_items[j].get('product_name') == d.get('product_name')):
                 qty += 1
                 j += 1
-            idx += 1
+            idx = self.items_model.rowCount() + 1
             self.items_model.appendRow([
                 QStandardItem(str(idx)),
-                QStandardItem(d.get('barcode', '')),
+                QStandardItem(d.get('barcode', '') or '(no barcode)'),
                 QStandardItem(d.get('product_name') or d.get('product_code') or ''),
                 QStandardItem(str(qty)),
             ])
             i = j
 
+    # ----------------------------------------------- print/preview (CRITICAL FIX)
     def on_preview_clicked(self):
         if not self.current_items:
             QMessageBox.warning(self, "Empty",
                                 "Please add at least one sticker first.")
             return
-        printer = QPrinter(QPrinter.HighResolution)
         lay = self._current_layout()
-        
-        printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
-                                       QPageSize.Millimeter))
-        printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
-        dlg = QPrintPreviewDialog(printer, self)
-        dlg.paintRequested.connect(lambda p: self._print_to(p))
-        dlg.exec_()
+        try:
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
+                                           QPageSize.Millimeter))
+            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+            if not printer.isValid():
+                QMessageBox.warning(self, "No printer",
+                    "No valid printer found.\n"
+                    "Use 'Save as PDF' instead, or install a printer driver.")
+                return
+            dlg = QPrintPreviewDialog(printer, self)
+            dlg.paintRequested.connect(lambda p: self._print_to(p))
+            dlg.exec_()
+        except Exception as e:
+            QMessageBox.critical(self, "Preview failed",
+                f"Could not open the print preview:\n{e}\n\n"
+                f"Try 'Save as PDF' instead — it always works.")
 
     def _print_to(self, printer: QPrinter):
         lay = self._current_layout()
         try:
-            print_sticker_sheet(lay, self.current_items,
-                                 font_sizes=self.font_sizes,
+            print_sticker_sheet(lay, self.current_items, self.template,
                                  printer=printer,
                                  copies=self.copies_spin.value())
         except Exception as e:
-            QMessageBox.critical(self, "Print error", str(e))
+            print(f"Print error: {e}")
 
     def on_print_clicked(self):
         if not self.current_items:
@@ -503,49 +541,103 @@ class MainWindow(QMainWindow):
                                 "Please add at least one sticker first.")
             return
         lay = self._current_layout()
-        printer = QPrinter(QPrinter.HighResolution)
-        printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
-                                       QPageSize.Millimeter))
-        printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
-        printer.setCopyCount(self.copies_spin.value())
+        try:
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
+                                           QPageSize.Millimeter))
+            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+            printer.setCopyCount(self.copies_spin.value())
+            if not printer.isValid():
+                QMessageBox.warning(self, "No printer",
+                    "No valid printer found.\n"
+                    "Use 'Save as PDF' instead, or install a printer driver.")
+                return
+            if lay.is_label:
+                QMessageBox.information(
+                    self, "Label Printer Mode",
+                    "🖨 Label Printer Mode is ON.\n\n"
+                    "In the Print dialog:\n"
+                    "  • SELECT your label printer\n"
+                    "    (Zebra, TSC, Xprinter, Godex, etc.)\n"
+                    "  • Set label size in the printer driver\n"
+                    "    to match the selected label size\n"
+                    "  • Do NOT use an A4 paper printer"
+                )
+            dlg = QPrintDialog(printer, self)
+            if dlg.exec_() == QDialog.Accepted:
+                try:
+                    print_sticker_sheet(lay, self.current_items,
+                                         self.template,
+                                         printer=printer,
+                                         copies=1)
+                except Exception as e:
+                    QMessageBox.critical(self, "Print error",
+                        f"Printing failed:\n{e}\n\n"
+                        f"Try 'Save as PDF' instead.")
+        except Exception as e:
+            QMessageBox.critical(self, "Print failed",
+                f"Could not open the print dialog:\n{e}\n\n"
+                f"Try 'Save as PDF' instead.")
 
-        # Reminder for label printer mode
-        if lay.is_label:
-            QMessageBox.information(
-                self, "Label Printer Mode",
-                "🖨 Label Printer Mode is ON.\n\n"
-                "Important:\n"
-                "  1. In the Print dialog, SELECT your label printer\n"
-                "     (e.g. Zebra, TSC, Xprinter, Godex)\n"
-                "  2. Make sure the label size in the printer driver\n"
-                "     matches the selected label size\n"
-                "  3. Do NOT use A4 paper printers — they will\n"
-                "     print the label in the corner of an A4 sheet\n\n"
-                "Each item in the queue will print as one label."
-            )
+    def on_save_pdf_clicked(self):
+        """Always-works alternative to direct printing."""
+        if not self.current_items:
+            QMessageBox.warning(self, "Empty",
+                                "Please add at least one sticker first.")
+            return
+        lay = self._current_layout()
+        default_name = f"barcodes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save as PDF", default_name, "PDF Files (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            export_to_pdf(lay, self.current_items, self.template, path)
+            QMessageBox.information(self, "Saved",
+                f"PDF saved to:\n{path}\n\n"
+                f"You can now open this PDF and print it from any PDF viewer.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
 
-        dlg = QPrintDialog(printer, self)
+    # ----------------------------------------------- sticker editor
+    def on_edit_layout_clicked(self):
+        if self.current_items:
+            sample_data = self.current_items[0]
+        else:
+            sample_data = {
+                'company_name': self.company_edit.text() or 'Company Name',
+                'product_name': self.product_edit.text() or 'Product Name',
+                'product_code': self.code_edit.text() or 'CODE-001',
+                'barcode': self.barcode_edit.text() or '501234567890',
+                'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
+                'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
+                'mobile': self.mobile_edit.text() or '+92 300 1234567',
+            }
+        lay = self._current_layout()
+        self.template.sticker_w_mm = lay.sticker_w_mm
+        self.template.sticker_h_mm = lay.sticker_h_mm
+        dlg = StickerEditorDialog(self.template, sample_data,
+                                    lay.sticker_w_mm, lay.sticker_h_mm,
+                                    unit_code=self.unit.code,
+                                    parent=self)
         if dlg.exec_() == QDialog.Accepted:
-            try:
-                print_sticker_sheet(lay, self.current_items,
-                                     font_sizes=self.font_sizes,
-                                     printer=printer,
-                                     copies=1)  # copies handled by printer
-            except Exception as e:
-                QMessageBox.critical(self, "Print error", str(e))
+            self.template = dlg.template
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
+            self._refresh_preview()
+            self._update_statusbar()
 
+    # ----------------------------------------------- settings + history
     def on_settings_clicked(self):
         dlg = SettingsDialog(self.db, self)
         if dlg.exec_() == QDialog.Accepted:
-            self.font_sizes = get_font_sizes_from_settings(self.db)
-            self.default_company = self.db.get_setting('default_company', '')
-            self.default_mobile = self.db.get_setting('default_mobile', '')
+            self.unit = get_unit(get_unit_from_settings(self.db))
             custom_key = self.db.get_setting('custom_layout_json', '')
             if custom_key:
                 try:
                     d = json.loads(custom_key)
                     self.custom_layout = custom_layout(**d)
-                    # switch combo to custom
                     self.layout_key = '__custom__'
                     idx = self.layout_combo.findData('__custom__')
                     if idx >= 0:
@@ -554,6 +646,7 @@ class MainWindow(QMainWindow):
                     pass
             self._update_layout_info()
             self._refresh_preview()
+            self._update_statusbar()
 
     def on_history_clicked(self):
         dlg = HistoryDialog(self.db, self)
@@ -564,7 +657,6 @@ class MainWindow(QMainWindow):
             self.code_edit.setText(e.get('product_code') or '')
             self.barcode_edit.setText(e.get('barcode') or '')
             self.mobile_edit.setText(e.get('mobile') or '')
-            # dates
             if e.get('mfg_date'):
                 d = QDate.fromString(e['mfg_date'], "yyyy-MM-dd")
                 if d.isValid():
@@ -574,19 +666,13 @@ class MainWindow(QMainWindow):
                 if d.isValid():
                     self.exp_date.setDate(d)
 
-    # ------------------------------------------------------ settings
-    def _restore_settings(self):
-        # already restored layout_key, default_company, default_mobile in __init__
-        pass
-
     def closeEvent(self, event):
-        # save defaults
-        self.db.set_setting('default_company', self.company_edit.text().strip())
-        self.db.set_setting('default_mobile', self.mobile_edit.text().strip())
-        self.db.set_setting('layout_key', self.layout_key)
-        # window geometry
         try:
-            self.db.set_setting('window_geometry', self.saveGeometry().data().hex())
+            self.db.set_setting('default_company', self.company_edit.text().strip())
+            self.db.set_setting('default_mobile', self.mobile_edit.text().strip())
+            self.db.set_setting('layout_key', self.layout_key)
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
         except Exception:
             pass
         self.db.close()
