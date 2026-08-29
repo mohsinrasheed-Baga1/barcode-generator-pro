@@ -12,6 +12,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Required permissions: write contents (for releases) + actions (for logs)
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build-windows:
     runs-on: windows-latest
