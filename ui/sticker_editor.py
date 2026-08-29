@@ -42,7 +42,12 @@ from core.printer import (draw_sticker_with_template,
 class ElementItem(QGraphicsRectItem):
     """
     A selectable, draggable rectangle representing a sticker element.
-    The element's content (text or barcode) is drawn via a custom paint.
+    Position is stored in element.x_mm / element.y_mm (relative to sticker
+    top-left). We use QGraphicsItem.setPos() for the actual scene position
+    and setRect() for the size only (rect's top-left is always (0,0)).
+
+    This way, when the user drags the item, Qt updates pos() automatically,
+    and we read pos() back into element.x_mm/y_mm via itemChange().
     """
     def __init__(self, element: StickerElement, mm_per_px: float,
                  parent_view: 'StickerScene'):
@@ -52,54 +57,55 @@ class ElementItem(QGraphicsRectItem):
         self.parent_view = parent_view
         self.setFlags(QGraphicsItem.ItemIsSelectable
                       | QGraphicsItem.ItemIsMovable
-                      | QGraphicsItem.ItemSendsGeometryChanges)
+                      | QGraphicsItem.ItemSendsGeometryChanges
+                      | QGraphicsItem.ItemIsFocusable)
         self.setAcceptHoverEvents(True)
         self._update_geometry()
 
     def _update_geometry(self):
-        # The element's x_mm, y_mm are RELATIVE to the sticker top-left.
-        # In scene coordinates, the sticker top-left is at (0, 0).
-        # 1 mm = (1/mm_per_px) pixels in scene.
+        # Convert mm -> scene pixels (1 mm = 1/mm_per_px px)
         px_per_mm = 1.0 / self.mm_per_px
         x = self.element.x_mm * px_per_mm
         y = self.element.y_mm * px_per_mm
         w = self.element.w_mm * px_per_mm
         h = self.element.h_mm * px_per_mm
-        # setRect uses local coords; pos is 0,0 since we embed x/y in rect
-        self.setRect(QRectF(x, y, w, h))
-        if self.element.rotation:
-            self.setRotation(self.element.rotation)
+        # Use setPos for position, setRect for size (top-left at 0,0)
+        # This way, dragging updates pos() and we can read it back.
+        self.setPos(x, y)
+        self.setRect(QRectF(0, 0, w, h))
+        # Rotation is around the center of the rect (default behavior)
+        self.setTransformOriginPoint(w / 2, h / 2)
+        self.setRotation(self.element.rotation)
 
     def refresh(self):
         self._update_geometry()
         self.update()
 
     def paint(self, painter: QPainter, option, widget=None):
-        # Draw selection border first
         rect = self.rect()
-        # Background: transparent
-        # Draw a thin dashed border + label
+        # Draw selection border
         pen = QPen(QColor('#1a4d8f') if self.isSelected() else QColor('#888888'))
-        pen.setWidthF(0.5)
+        pen.setWidthF(0.7 if self.isSelected() else 0.5)
         if not self.isSelected():
             pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(rect)
 
-        # Draw content
+        # Draw the actual content (text or barcode) using the same
+        # renderer as the final print, so what you see is what you get.
+        # We render directly in local rect coords (top-left = 0,0).
         data = self.parent_view.sample_data
-        # The "scale" for the template-based renderer is 1 mm = px_per_mm px
-        # The draw_sticker_with_template expects mm coordinates — we render
-        # directly using the element.
-        from core.printer import _draw_element
+        from core.printer import _draw_element_at_origin
         px_per_mm = 1.0 / self.mm_per_px
-        _draw_element(painter, self.element, data, px_per_mm, QPointF(0, 0))
+        _draw_element_at_origin(painter, self.element, data, px_per_mm, rect)
 
-        # Draw label badge in top-left corner
+        # Draw label badge above the rect when selected
         if self.isSelected():
-            label_rect = QRectF(rect.left(), rect.top() - 14,
-                                 max(40, len(self.element.label) * 6), 14)
+            badge_w = max(40, len(self.element.label) * 7)
+            badge_h = 14
+            label_rect = QRectF(rect.left(), rect.top() - badge_h - 2,
+                                 badge_w, badge_h)
             painter.setBrush(QColor('#1a4d8f'))
             painter.setPen(Qt.NoPen)
             painter.drawRect(label_rect)
@@ -109,22 +115,44 @@ class ElementItem(QGraphicsRectItem):
             painter.setFont(f)
             painter.drawText(label_rect, Qt.AlignCenter, self.element.label)
 
-    def mouseMoveEvent(self, event):
-        super().mouseMoveEvent(event)
-        # Update element's x_mm/y_mm based on new position
-        # (pos stays at 0,0; rect encodes the actual position)
-        px_per_mm = 1.0 / self.mm_per_px
-        new_x_mm = self.rect().x() / px_per_mm
-        new_y_mm = self.rect().y() / px_per_mm
-        self.element.x_mm = max(0, new_x_mm)
-        self.element.y_mm = max(0, new_y_mm)
-        # Notify the parent so it can sync the property panel
-        self.parent_view.element_changed.emit(self.element)
-
     def itemChange(self, change, value):
+        # Handle position changes (drag, moveBy, setPos)
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            px_per_mm = 1.0 / self.mm_per_px
+            self.element.x_mm = self.pos().x() / px_per_mm
+            self.element.y_mm = self.pos().y() / px_per_mm
+            self.parent_view.element_changed.emit(self.element)
         if change == QGraphicsItem.ItemSelectedHasChanged:
             self.parent_view.element_selection_changed.emit(self.element)
+            if self.isSelected():
+                self.setFocus()
         return super().itemChange(change, value)
+
+    def keyPressEvent(self, event):
+        """Arrow keys nudge the element. Shift = small step (0.1mm)."""
+        step_mm = 0.1 if (event.modifiers() & Qt.ShiftModifier) else 1.0
+        step_px = step_mm * (1.0 / self.mm_per_px)
+        key = event.key()
+        if key == Qt.Key_Left:
+            self.moveBy(-step_px, 0)
+            event.accept()
+        elif key == Qt.Key_Right:
+            self.moveBy(step_px, 0)
+            event.accept()
+        elif key == Qt.Key_Up:
+            self.moveBy(0, -step_px)
+            event.accept()
+        elif key == Qt.Key_Down:
+            self.moveBy(0, step_px)
+            event.accept()
+        elif key == Qt.Key_Delete or key == Qt.Key_Backspace:
+            # Toggle the element off (it can be re-enabled in the property panel)
+            self.element.enabled = False
+            self.parent_view.element_changed.emit(self.element)
+            self.parent_view.refresh()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
 
 class StickerScene(QGraphicsScene):

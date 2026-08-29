@@ -137,15 +137,33 @@ jobs:
               creates Start Menu + Desktop shortcuts.
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
+            ### What's new in v2.0.1
+
+            #### Bug fixes:
+            - **Fixed**: Sticker editor — drag/arrow keys now correctly move elements
+              (previously element positions didn't update properly during drag,
+              so only "slight movement" was possible).
+            - **Fixed**: Text in sticker elements no longer gets clipped
+              (added Qt.TextDontClip flag to drawText).
+            - **Fixed**: Print button now properly asks which printer + how many
+              copies (added a friendly setup dialog before the system print dialog).
+            - **Fixed**: Copy count no longer overridden to 1 when print dialog returns.
+            - **Improved**: Use QPrinter.PrinterResolution for better compatibility
+              with label printers (Zebra, TSC, Xprinter, Godex).
+            - **Added**: Status bar messages confirm print job submission with
+              printer name and copy count.
+            - **Added**: Keyboard arrow keys nudge selected element (1mm normal,
+              0.1mm with Shift). Delete/Backspace disables element.
+            - **Added**: Success message after print submission with troubleshooting
+              tips if print doesn't come out.
+
             ### What's new in v2.0.0
             - Interactive Sticker Layout Editor — drag, resize, rotate any element
             - Barcode optional (Include Barcode toggle)
             - Save as PDF button — always works, no printer needed
             - mm / inches unit toggle in Settings
             - Per-element font family, size, bold, italic, color, alignment
-            - Fixed Print/Preview crash bug (now wrapped in try/except)
             - Better error messages with "Save as PDF" fallback
-            - Status bar showing current unit, layout, template element count
 
             ### Older features (still included)
             - EAN-13 barcode generator with checksum validation

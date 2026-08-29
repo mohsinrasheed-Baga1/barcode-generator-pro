@@ -44,6 +44,7 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
     Draw a single element at its position within the sticker.
     `scale` converts mm -> device pixels.
     `sticker_origin` is the top-left of the sticker in device pixels.
+    The element's x_mm, y_mm are added to the sticker_origin.
     """
     if not elem.enabled:
         return
@@ -65,7 +66,6 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
     rect = QRectF(x_px, y_px, w_px, h_px)
 
     if elem.id == 'barcode':
-        # Draw the barcode image
         bc = data.get('barcode', '')
         if not bc:
             painter.restore()
@@ -92,7 +92,64 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
         font = _element_to_qfont(elem)
         painter.setFont(font)
         painter.setPen(QColor(elem.color or '#000000'))
-        painter.drawText(rect, _align_flag(elem.align), text)
+        # IMPORTANT: TextDontClip prevents text from being cut off when
+        # the element rect is smaller than the text size. The user can
+        # still adjust the element size in the editor.
+        flags = _align_flag(elem.align) | Qt.TextDontClip
+        painter.drawText(rect, flags, text)
+
+    painter.restore()
+
+
+def _draw_element_at_origin(painter: QPainter, elem: StickerElement,
+                             data: dict, scale: float,
+                             local_rect: QRectF):
+    """
+    Draw an element at the given local rect (used by the sticker editor
+    where the element's position is already encoded by the graphics item's
+    setPos() — we just need to render the content inside the local rect).
+    """
+    if not elem.enabled:
+        return
+    painter.save()
+
+    if elem.rotation:
+        cx = local_rect.center().x()
+        cy = local_rect.center().y()
+        painter.translate(cx, cy)
+        painter.rotate(elem.rotation)
+        painter.translate(-cx, -cy)
+
+    if elem.id == 'barcode':
+        bc = data.get('barcode', '')
+        if bc:
+            try:
+                w_px = local_rect.width()
+                h_px = local_rect.height()
+                module_w = (w_px / 100) * 0.165
+                img, full_code = generate_ean13_image(
+                    bc,
+                    module_width=module_w,
+                    module_height=h_px * 0.7,
+                )
+                scaled = img.scaled(int(w_px), int(h_px),
+                                    Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                tx = local_rect.left() + (w_px - scaled.width()) / 2
+                ty = local_rect.top() + (h_px - scaled.height()) / 2
+                painter.drawImage(QPointF(tx, ty), scaled)
+            except Exception:
+                pass
+    else:
+        text = get_text_for_element(elem.id, data)
+        if text:
+            font = _element_to_qfont(elem)
+            painter.setFont(font)
+            painter.setPen(QColor(elem.color or '#000000'))
+            # In the editor, we use TextDontClip so the user can see the
+            # full text even if the element rect is too small (they can
+            # then resize it).
+            flags = _align_flag(elem.align) | Qt.TextDontClip
+            painter.drawText(local_rect, flags, text)
 
     painter.restore()
 
@@ -134,23 +191,40 @@ def draw_sticker_with_template(painter: QPainter, rect: QRectF,
 def print_sticker_sheet(layout: StickerLayout, items: list,
                         template: StickerTemplate,
                         printer: QPrinter = None,
-                        copies: int = 1) -> QPrinter:
-    """Render items onto pages using layout + template."""
+                        copies: int = None) -> QPrinter:
+    """
+    Render `items` (list of dicts) onto pages using `layout` + `template`.
+
+    `printer`: If None, a new QPrinter is created with PrinterResolution mode.
+    `copies`: If provided, overrides the printer's copy count. If None and
+             printer was provided, the printer's existing copy count is used
+             (this respects the user's choice in the print dialog).
+    """
     if printer is None:
-        printer = QPrinter(QPrinter.HighResolution)
+        # PrinterResolution mode respects the printer's native DPI —
+        # this is best for label printers (Zebra, TSC, Xprinter, etc.)
+        # which often don't work well with HighResolution (1200+ DPI).
+        printer = QPrinter(QPrinter.PrinterResolution)
         printer.setPageSize(QPageSize(QSizeF(layout.paper_w_mm, layout.paper_h_mm),
                                        QPageSize.Millimeter))
         printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+        if copies is not None:
+            printer.setCopyCount(max(1, int(copies)))
+    elif copies is not None:
+        # Caller explicitly wants to override copies
+        printer.setCopyCount(max(1, int(copies)))
 
-    printer.setCopyCount(max(1, int(copies)))
     painter = QPainter(printer)
     if not painter.isActive():
-        raise RuntimeError("Cannot start painter on printer.")
+        raise RuntimeError(
+            "Cannot start painter on printer. The printer may not be valid "
+            "or the print job was cancelled."
+        )
 
     slots = sticker_positions(layout)
     slots_per_page = len(slots)
-    res = printer.resolution()
-    scale = res / 25.4
+    res = printer.resolution()  # DPI
+    scale = res / 25.4  # px per mm
 
     page = 0
     for start in range(0, len(items), slots_per_page):
@@ -229,12 +303,17 @@ def render_single_sticker_preview(template: StickerTemplate, data: dict,
 # ---------------------------------------------------------------- PDF export
 def export_to_pdf(layout: StickerLayout, items: list,
                   template: StickerTemplate, pdf_path: str) -> str:
-    """Export the current batch to a PDF file. Always works (no printer needed)."""
+    """
+    Export the current batch to a PDF file. Always works (no printer needed).
+    Uses HighResolution mode so the PDF has crisp barcodes for scanning.
+    """
     printer = QPrinter(QPrinter.HighResolution)
     printer.setOutputFormat(QPrinter.PdfFormat)
     printer.setOutputFileName(pdf_path)
     printer.setPageSize(QPageSize(QSizeF(layout.paper_w_mm, layout.paper_h_mm),
                                    QPageSize.Millimeter))
     printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+    # For PDF, force a reasonable DPI so barcodes render crisp
+    printer.setResolution(600)
     print_sticker_sheet(layout, items, template, printer=printer, copies=1)
     return pdf_path

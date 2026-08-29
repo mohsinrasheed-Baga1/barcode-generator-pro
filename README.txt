@@ -1,22 +1,34 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.0
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.1
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.0.0):
-  ✔ بارکوڈ آن/آف ٹوگل — اگر نہیں چاہیں تو ہٹا دیں
-  ✔ اسٹیکر ایڈیٹر — ہر عنصر (کمپنی، بارکوڈ، تاریخیں، وغیرہ)
-    کو کلک کر کے منتخب کریں، drag کریں، resize کریں، rotate کریں
-  ✔ فونٹ فیملی، سائز، bold، italic، color — ہر عنصر کے لیے
-    separately
-  ✔ ملی میٹر اور انچ — دونوں اکائیاں موجود (Settings میں toggle)
-  ✔ Save as PDF — اگر پرنٹر نہ ہو تو PDF محفوظ کر کے پرنٹ کریں
-  ✔ Crash fix — پرنٹ/پریویو پر سافٹ ویئر بند نہیں ہوگا
+نئے فیچرز (v2.0.1):
+  ✔ Drag bug fix — اب ہر عنصر کو مکمل طور پر drag کریں،
+    جتنا چاہیں move کریں (پہلے صرف تھوڑا move ہوتا تھا)
+  ✔ Arrow keys — منتخب عنصر کو arrow keys سے nudge کریں
+    (1mm normal, 0.1mm with Shift)
+  ✔ Delete key — منتخب عنصر کو disable کرنے کے لیے
+  ✔ Print dialog improvement — پرنٹ بٹن دبانے پر پہلے copies
+    پوچھتا ہے، پھر standard print dialog کھلتا ہے (printer
+    selection)
+  ✔ Text cutting fix — text اب نہیں cut ہوگا چاہے element
+    چھوٹا ہو
+  ✔ PrinterResolution mode — label printers کے لیے بہتر
+    (Zebra, TSC, Xprinter, Godex)
+  ✔ Status bar messages — print submission کی تصدیق
 
-پرانے فیچرز:
+پرانے فیچرز (v2.0.0):
+  ✔ بارکوڈ آن/آف ٹوگل
+  ✔ اسٹیکر ایڈیٹر — ہر عنصر drag/resize/rotate
+  ✔ فونٹ فیملی، سائز، bold، italic، color — ہر عنصر کے لیے
+  ✔ ملی میٹر اور انچ — دونوں اکائیاں
+  ✔ Save as PDF — ہمیشہ کام کرتا ہے
+
+پرانے فیچرز (v1.0):
   ✔ EAN-13 بارکوڈ بناؤ
   ✔ کمپنی نام، پروڈکٹ کوڈ، مینیوفیکچرنگ/ایکسپائری ڈیٹ، موبائل
-  ✔ A4 شیٹ پر مختلف سائز (40، 24، 80، 12 فی شیٹ) + کسٹم
+  ✔ A4 شیٹ پر مختلف سائز + کسٹم
   ✔ لیبل پرنٹر موڈ (Zebra, TSC, Xprinter, Godex, Rongta)
   ✔ CSV سے بلک امپورٹ
   ✔ SQLite ہسٹری (تلاش + دوبارہ استعمال)
@@ -78,7 +90,15 @@
   ➤ حرکت دینا (Move):
     1. "Edit Sticker Layout" بٹن دبائیں
     2. جس عنصر کو move کرنا ہے اس پر کلک کریں
-    3. ماؤس سے drag کر کے نئی جگہ پر لے جائیں
+    3. ماؤس سے drag کر کے نئی جگہ پر لے جائیں — جتنا چاہیں
+       move کر سکتے ہیں، کوئی restriction نہیں
+    4. یا arrow keys استعمال کریں:
+       ← ↑ → ↓ = 1 mm
+       Shift + arrow = 0.1 mm (fine control)
+
+  ➤ Delete key:
+    منتخب عنصر کو disable کرنے کے لیے Delete یا Backspace
+    دبائیں (element باقی رہے گا لیکن پرنٹ نہیں ہوگا)۔
 
   ➤ سائز تبدیل کرنا (Resize):
     1. عنصر منتخب کریں
