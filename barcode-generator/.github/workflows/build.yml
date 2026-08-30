@@ -1,0 +1,174 @@
+name: Build Barcode Generator Pro (Windows)
+
+# Triggers:
+#   1. Push to main/master — build & upload artifacts (no release)
+#   2. Tag push (v*) — build & create GitHub Release with the installer
+#   3. Manual dispatch from Actions tab
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Required permissions: write contents (for releases) + actions (for logs)
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      # ---------------------------------------------------------------- Check out
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- Python
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Display Python & pip versions
+        run: |
+          python --version
+          pip --version
+
+      # ---------------------------------------------------------------- Dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify PyInstaller
+        run: pyinstaller --version
+
+      # ---------------------------------------------------------------- Build EXE
+      - name: Build standalone EXE with PyInstaller
+        shell: cmd
+        run: |
+          pyinstaller --noconfirm ^
+            --onefile ^
+            --windowed ^
+            --name "BarcodeGeneratorPro" ^
+            --icon "assets/icon.ico" ^
+            --add-data "assets;assets" ^
+            --collect-all PyQt5 ^
+            --collect-all barcode ^
+            --hidden-import PyQt5.QtPrintSupport ^
+            --hidden-import PyQt5.QtSvg ^
+            main.py
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\BarcodeGeneratorPro.exe")) {
+            throw "PyInstaller output not found: dist\BarcodeGeneratorPro.exe"
+          }
+          $size = (Get-Item "dist\BarcodeGeneratorPro.exe").Length
+          Write-Host "Built EXE size: $size bytes"
+
+      # ---------------------------------------------------------------- Inno Setup
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
+            throw "Inno Setup not installed"
+          }
+
+      - name: Build installer with Inno Setup
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          if not exist "dist\BarcodeGeneratorPro_Setup.exe" (
+            echo ERROR: Installer was not produced
+            exit /b 1
+          )
+
+      - name: List dist folder
+        shell: pwsh
+        run: Get-ChildItem dist
+
+      # ---------------------------------------------------------------- Artifacts
+      - name: Upload standalone EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: BarcodeGeneratorPro-EXE
+          path: dist/BarcodeGeneratorPro.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: BarcodeGeneratorPro-Installer
+          path: dist/BarcodeGeneratorPro_Setup.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      # ---------------------------------------------------------------- Release
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/BarcodeGeneratorPro.exe
+            dist/BarcodeGeneratorPro_Setup.exe
+          name: Barcode Generator Pro ${{ github.ref_name }}
+          body: |
+            ## Barcode Generator Pro ${{ github.ref_name }}
+
+            ### Downloads
+            - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
+              Installs to `Program Files\Barcode Generator Pro`,
+              creates Start Menu + Desktop shortcuts.
+            - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
+
+            ### What's new in v2.0.2
+
+            #### 🛠 CRITICAL FIX: Print dialog issue
+            - **Replaced** QPrintDialog (which crashed in some PyInstaller-bundled
+              setups) with our own custom PrintSetupDialog.
+            - The new dialog uses `QPrinterInfo.availablePrinters()` to list
+              all installed printers and lets the user pick one.
+            - Has a "Printer Properties" button to open the native printer
+              driver settings (for setting label size on label printers).
+
+            #### New features
+            - **⚡ Quick Print** button — sends directly to the system default
+              printer without any dialog (just asks for copies count).
+            - **Detailed error messages** — when something fails, the full
+              Python traceback is shown so the issue can be diagnosed.
+            - **PDF print tips** — after saving a PDF, the success message
+              explains that PDF viewers must use "Actual Size" setting
+              (not "Fit to page") to avoid barcode size issues.
+
+            #### Earlier features (still included)
+            - Interactive Sticker Layout Editor with drag, resize, rotate
+            - Keyboard arrow keys nudge elements (1mm / 0.1mm with Shift)
+            - Delete key disables element
+            - Barcode optional (Include Barcode toggle)
+            - Save as PDF — always works
+            - mm / inches unit toggle
+            - Per-element font family, size, bold, italic, color, alignment
+            - EAN-13 barcode generator
+            - Sheet printer mode (A4 — 40/24/80/12 stickers per sheet)
+            - Label printer mode (Zebra, TSC, Xprinter, Godex, Rongta)
+              with 7 preset label sizes + custom size
+            - Company name, product name, product code, Mfg/Exp dates, mobile
+            - Bulk CSV import
+            - SQLite history (search + reuse)
+            - Bilingual UI (English + Urdu)
+
+            See `README.txt` in the repo for full instructions.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
