@@ -185,6 +185,11 @@ def print_sticker_sheet(layout: StickerLayout, items: list,
     `copies`: If provided, overrides the printer's copy count. If None and
              printer was provided, the printer's existing copy count is used
              (this respects the user's choice in the print dialog).
+
+    CRITICAL: For label printers, we call setFullPage(True) which tells Qt
+    to use the FULL physical page (no hard margins). Without this, Qt adds
+    its own default margins that consume a significant portion of small
+    labels (e.g. 3-5mm on a 25mm tall label = huge offset).
     """
     if printer is None:
         printer = QPrinter(QPrinter.PrinterResolution)
@@ -196,11 +201,20 @@ def print_sticker_sheet(layout: StickerLayout, items: list,
     elif copies is not None:
         printer.setCopyCount(max(1, int(copies)))
 
+    # CRITICAL for label printers: use full physical page (no Qt margins)
+    printer.setFullPage(True)
+
     painter = QPainter(printer)
     if not painter.isActive():
         raise RuntimeError(
             "Cannot start painter on printer. The printer may not be valid "
-            "or the print job was cancelled."
+            "or the print job was cancelled.\n\n"
+            f"Printer: {printer.printerName()}\n"
+            f"Page size (mm): {printer.pageLayout().pageSize().size(QPageSize.Millimeter).width():.1f} x "
+            f"{printer.pageLayout().pageSize().size(QPageSize.Millimeter).height():.1f}\n"
+            f"Resolution (DPI): {printer.resolution()}\n"
+            f"Layout paper (mm): {layout.paper_w_mm} x {layout.paper_h_mm}\n"
+            f"Items to print: {len(items)}"
         )
 
     slots = sticker_positions(layout)
@@ -224,6 +238,27 @@ def print_sticker_sheet(layout: StickerLayout, items: list,
 
     painter.end()
     return printer
+
+
+def diagnose_printer(printer: QPrinter, layout: StickerLayout) -> str:
+    """Return a diagnostic string with printer info — useful for error messages."""
+    try:
+        pl = printer.pageLayout()
+        ps = pl.pageSize()
+        sz_mm = ps.size(QPageSize.Millimeter)
+        return (
+            f"Printer: {printer.printerName()}\n"
+            f"Resolution: {printer.resolution()} DPI\n"
+            f"Page size (mm): {sz_mm.width():.2f} x {sz_mm.height():.2f}\n"
+            f"Layout paper (mm): {layout.paper_w_mm:.2f} x {layout.paper_h_mm:.2f}\n"
+            f"Layout sticker (mm): {layout.sticker_w_mm:.2f} x {layout.sticker_h_mm:.2f}\n"
+            f"Match: {'✓ YES' if (abs(sz_mm.width() - layout.paper_w_mm) < 0.5 and abs(sz_mm.height() - layout.paper_h_mm) < 0.5) else '✗ NO — sizes differ!'}\n"
+            f"Copies: {printer.copyCount()}\n"
+            f"Full page mode: {printer.fullPage()}\n"
+            f" isValid: {printer.isValid()}"
+        )
+    except Exception as e:
+        return f"Could not get printer info: {e}"
 
 
 # ---------------------------------------------------------------- preview
@@ -288,6 +323,10 @@ def export_to_pdf(layout: StickerLayout, items: list,
     """
     Export the current batch to a PDF file. Always works (no printer needed).
     Uses HighResolution mode so the PDF has crisp barcodes for scanning.
+
+    CRITICAL: setFullPage(True) ensures the PDF page is exactly the label
+    size, not the PDF default (Letter/A4). This is essential for label
+    printers — the PDF viewer will use the PDF's page size as the print size.
     """
     printer = QPrinter(QPrinter.HighResolution)
     printer.setOutputFormat(QPrinter.PdfFormat)
@@ -295,6 +334,7 @@ def export_to_pdf(layout: StickerLayout, items: list,
     printer.setPageSize(QPageSize(QSizeF(layout.paper_w_mm, layout.paper_h_mm),
                                    QPageSize.Millimeter))
     printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+    printer.setFullPage(True)  # use full PDF page, no Qt margins
     printer.setResolution(600)
     print_sticker_sheet(layout, items, template, printer=printer, copies=1)
     return pdf_path

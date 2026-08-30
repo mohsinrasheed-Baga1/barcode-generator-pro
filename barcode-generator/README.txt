@@ -1,21 +1,20 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.2
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.3
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.0.2):
-  ✔ Custom Print Dialog — QPrintDialog کے بجائے ہماری اپنی
-    dialog جو PyInstaller bundled apps میں reliable ہے
-    (QPrintDialog بعض اوقات crash ہوتا تھا)
-  ✔ Quick Print button — ڈیفالٹ پرنٹر پر فوری پرنٹ، بغیر
-    کسی dialog کے
-  ✔ Printer Properties button — پرنٹر کی native settings
-    کھولنے کے لیے (label size set کرنے کے لیے)
-  ✔ Better error messages — پورا traceback دکھاتا ہے تاکہ
-    مسئلہ diagnose ہو سکے
-  ✔ PDF print tips — PDF save کرنے کے بعد بتاتا ہے کہ
-    PDF viewer میں 'Actual Size' setting لگانا ضروری ہے
-    (ورنہ PDF auto-scale ہو کر بارکوڈ غلط سائز میں نکلے گا)
+نئے فیچرز (v2.0.3):
+  ✔ setFullPage(True) — ★ CRITICAL FIX — اب Qt خود اپنے margins
+    شامل نہیں کرتا، پورا label استعمال ہوتا ہے
+  ✔ 1.5×1 انچ preset — آپ کے label کا exact سائز (38.1×25.4 mm)
+  ✔ 6 inch-based presets شامل کیے:
+    1.5×1, 2×1, 3×1, 3×2, 4×2, 4×6 inches
+  ✔ Test Print button — Print Setup dialog میں 1 label test
+    print کرنے کا button شامل
+  ✔ Printer info display — selected printer کا actual page size
+    دکھاتا ہے، match ہونے پر ✓، مختلف ہونے پر ✗ warning
+  ✔ Diagnostic info in errors — printer name, page size, DPI
+    سب error message میں دکھاتا ہے
 
 پرانے فیچرز (v2.0.1):
   ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں

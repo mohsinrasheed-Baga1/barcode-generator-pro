@@ -127,30 +127,54 @@ jobs:
 
             ### Downloads
             - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
-              Installs to `Program Files\Barcode Generator Pro`,
-              creates Start Menu + Desktop shortcuts.
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new in v2.0.2
+            ### What's new in v2.0.3
 
-            #### 🛠 CRITICAL FIX: Print dialog issue
-            - **Replaced** QPrintDialog (which crashed in some PyInstaller-bundled
-              setups) with our own custom PrintSetupDialog.
-            - The new dialog uses `QPrinterInfo.availablePrinters()` to list
-              all installed printers and lets the user pick one.
-            - Has a "Printer Properties" button to open the native printer
-              driver settings (for setting label size on label printers).
+            #### 🛠 CRITICAL FIX: Direct print not coming out + label size mismatch
 
-            #### New features
-            - **⚡ Quick Print** button — sends directly to the system default
-              printer without any dialog (just asks for copies count).
-            - **Detailed error messages** — when something fails, the full
-              Python traceback is shown so the issue can be diagnosed.
-            - **PDF print tips** — after saving a PDF, the success message
-              explains that PDF viewers must use "Actual Size" setting
-              (not "Fit to page") to avoid barcode size issues.
+            **Root cause:** `setFullPage(True)` was missing — Qt adds its own
+            "hard margins" (3-5mm) by default, which on a 25mm tall label
+            consumes 12-20% of the label area. Also, the user's actual label
+            (1.5"×1" = 38.1×25.4mm) didn't match any preset — they were using
+            a 50×30mm preset which caused the print to be cut off.
+
+            **Fixes:**
+            - Added `printer.setFullPage(True)` in `print_sticker_sheet` and
+              `export_to_pdf` — now Qt uses the FULL physical page (no auto
+              margins) — critical for label printers!
+            - Added 6 new inch-based label presets:
+              * **1.5 × 1 inch (38.1 × 25.4 mm) — آپ کا لیبل**
+              * 2 × 1 inch (50.8 × 25.4 mm)
+              * 3 × 1 inch (76.2 × 25.4 mm)
+              * 3 × 2 inch (76.2 × 50.8 mm)
+              * 4 × 2 inch (101.6 × 50.8 mm)
+              * 4 × 6 inch (101.6 × 152.4 mm) — US shipping label
+
+            #### New: Test Print button
+            - The Print Setup dialog now has a "🧪 Test Print" button
+            - Prints exactly 1 label as a test, so you can verify the
+              setup before printing all your labels
+
+            #### New: Printer info display with match indicator
+            - The dialog shows the selected printer's actual page size
+            - Green "✓ MATCHES layout" indicator when sizes match
+            - Red "✗ مختلف — printer پر size درست کریں" warning when sizes differ
+            - Shows printer resolution (DPI) for diagnostics
+
+            #### New: Diagnostic info in error messages
+            - All print error messages now include:
+              * Printer name
+              * Actual page size vs required layout size
+              * Match status
+              * Resolution (DPI)
+              * Copies count
+              * Full-page mode
+            - This makes it much easier to diagnose print issues
 
             #### Earlier features (still included)
+            - Custom Print Setup Dialog (replaces unreliable QPrintDialog)
+            - Quick Print button — sends to default printer
             - Interactive Sticker Layout Editor with drag, resize, rotate
             - Keyboard arrow keys nudge elements (1mm / 0.1mm with Shift)
             - Delete key disables element
@@ -161,7 +185,7 @@ jobs:
             - EAN-13 barcode generator
             - Sheet printer mode (A4 — 40/24/80/12 stickers per sheet)
             - Label printer mode (Zebra, TSC, Xprinter, Godex, Rongta)
-              with 7 preset label sizes + custom size
+              with 13 preset label sizes + custom size
             - Company name, product name, product code, Mfg/Exp dates, mobile
             - Bulk CSV import
             - SQLite history (search + reuse)

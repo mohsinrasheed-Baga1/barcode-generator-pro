@@ -32,7 +32,8 @@ from core.templates import (StickerTemplate, StickerElement,
                               template_from_json)
 from core.units import MM, IN, get_unit, format_value
 from core.printer import (print_sticker_sheet, render_preview,
-                            export_to_pdf, render_single_sticker_preview)
+                            export_to_pdf, render_single_sticker_preview,
+                            diagnose_printer)
 from ui.settings_dialog import (SettingsDialog, get_font_sizes_from_settings,
                                    get_unit_from_settings)
 from ui.history_dialog import HistoryDialog
@@ -41,7 +42,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.0.3"
 
 
 class MainWindow(QMainWindow):
@@ -526,8 +527,12 @@ class MainWindow(QMainWindow):
 
         # Show our custom print setup dialog
         try:
-            dlg = PrintSetupDialog(lay, default_copies=self.copies_spin.value(),
-                                    parent=self)
+            dlg = PrintSetupDialog(
+                lay,
+                default_copies=self.copies_spin.value(),
+                parent=self,
+                test_print_callback=self._do_test_print
+            )
             if dlg.exec_() != QDialog.Accepted:
                 self.statusBar().showMessage("Print cancelled by user.", 3000)
                 return
@@ -547,7 +552,7 @@ class MainWindow(QMainWindow):
             n_items = len(self.current_items)
             print_sticker_sheet(lay, self.current_items, self.template,
                                  printer=printer, copies=None)  # use printer's copies
-            # Success message
+            # Success message with diagnostic info
             self.statusBar().showMessage(
                 f"✓ Print sent to: {printer.printerName()}  |  "
                 f"Copies: {printer.copyCount()}  |  "
@@ -559,6 +564,7 @@ class MainWindow(QMainWindow):
                 f"✓ Print job submitted to:\n  {printer.printerName()}\n\n"
                 f"Copies: {printer.copyCount()}\n"
                 f"Items: {n_items}\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
                 f"If the print doesn't come out within a minute:\n"
                 f"  • Check printer is turned ON and has paper/labels\n"
                 f"  • Check Windows Print Queue (Control Panel > Devices & Printers)\n"
@@ -571,12 +577,58 @@ class MainWindow(QMainWindow):
             tb = traceback.format_exc()
             QMessageBox.critical(self, "Print failed / پرنٹ ناکام",
                 f"Could not print to {printer.printerName()}:\n\n{e}\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
                 f"Technical details:\n{tb}\n\n"
                 f"Possible causes:\n"
                 f"  • Printer is offline or has paper jam\n"
-                f"  • Wrong label/paper size in printer Properties\n"
+                f"  • Wrong label/paper size in printer Properties — "
+                f"required: {lay.paper_w_mm} × {lay.paper_h_mm} mm\n"
                 f"  • Printer driver issue\n\n"
                 f"Try 'Save as PDF' as a backup — it always works.")
+
+    def _do_test_print(self, printer_info):
+        """Print a single test label using the given printer info.
+        Uses the first item in queue, or builds a test sample if queue is empty."""
+        lay = self._current_layout()
+        try:
+            if self.current_items:
+                test_items = [self.current_items[0]]
+            else:
+                test_items = [{
+                    'company_name': 'TEST PRINT',
+                    'product_name': 'Sample Product',
+                    'product_code': 'TEST-001',
+                    'barcode': '501234567890',
+                    'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
+                    'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
+                    'mobile': self.mobile_edit.text() or '+92 300 1234567',
+                }]
+            printer = QPrinter(printer_info, QPrinter.PrinterResolution)
+            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
+                                           QPageSize.Millimeter))
+            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+            printer.setFullPage(True)
+            printer.setCopyCount(1)
+            print_sticker_sheet(lay, test_items, self.template,
+                                 printer=printer, copies=None)
+            QMessageBox.information(
+                self, "Test Print Sent / ٹیسٹ پرنٹ بھیج دیا گیا",
+                f"✓ Test print sent to:\n  {printer.printerName()}\n\n"
+                f"1 test label should now print.\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
+                f"If the test label comes out correctly:\n"
+                f"  → Click '🖨 Print' to print all your labels.\n\n"
+                f"If the test print didn't come out correctly:\n"
+                f"  1. Use '⚙ Printer Properties' to set label size to "
+                f"{lay.paper_w_mm} × {lay.paper_h_mm} mm\n"
+                f"  2. Select a different preset that matches your label roll\n"
+                f"  3. Use 'Save as PDF' as a backup"
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "Test Print Failed / ٹیسٹ پرنٹ ناکام",
+                f"Could not test print:\n\n{e}\n\n"
+                f"Technical details:\n{tb}")
 
     def on_quick_print_clicked(self):
         """Quick Print — uses the system default printer, no dialog.
