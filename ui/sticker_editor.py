@@ -1,13 +1,15 @@
 """
-Interactive sticker editor dialog.
+Interactive sticker editor dialog (v2.0.1+).
 
 The editor lets the user:
   - Click on any element (company name, barcode, dates, mobile, etc.)
     to select it.
-  - Drag selected element with the mouse to move it.
+  - Drag selected element with the mouse to move it (any distance).
+  - Use arrow keys to nudge (1 mm normal, 0.1 mm with Shift).
+  - Press Delete/Backspace to disable element.
   - Resize via the property panel (W / H in mm or inches).
-  - Rotate via the property panel (0..360 degrees).
-  - Toggle element on/off (e.g., disable barcode if not needed).
+  - Rotate via the property panel (0..360 degrees) or quick buttons.
+  - Toggle element on/off.
   - Change font family, font size, bold, italic, alignment per element.
   - Switch the active unit (mm / in).
   - Reset to default template.
@@ -35,7 +37,7 @@ from core.templates import (StickerTemplate, StickerElement,
 from core.units import (MM, IN, get_unit, format_value, pt_to_mm, mm_to_pt)
 from core.barcode_gen import generate_ean13_image, make_full_ean13
 from core.printer import (draw_sticker_with_template,
-                            render_single_sticker_preview)
+                            render_single_sticker_preview, _draw_element_at_origin)
 
 
 # ---------------------------------------------------- graphics items
@@ -63,17 +65,13 @@ class ElementItem(QGraphicsRectItem):
         self._update_geometry()
 
     def _update_geometry(self):
-        # Convert mm -> scene pixels (1 mm = 1/mm_per_px px)
         px_per_mm = 1.0 / self.mm_per_px
         x = self.element.x_mm * px_per_mm
         y = self.element.y_mm * px_per_mm
         w = self.element.w_mm * px_per_mm
         h = self.element.h_mm * px_per_mm
-        # Use setPos for position, setRect for size (top-left at 0,0)
-        # This way, dragging updates pos() and we can read it back.
         self.setPos(x, y)
         self.setRect(QRectF(0, 0, w, h))
-        # Rotation is around the center of the rect (default behavior)
         self.setTransformOriginPoint(w / 2, h / 2)
         self.setRotation(self.element.rotation)
 
@@ -83,7 +81,6 @@ class ElementItem(QGraphicsRectItem):
 
     def paint(self, painter: QPainter, option, widget=None):
         rect = self.rect()
-        # Draw selection border
         pen = QPen(QColor('#1a4d8f') if self.isSelected() else QColor('#888888'))
         pen.setWidthF(0.7 if self.isSelected() else 0.5)
         if not self.isSelected():
@@ -92,15 +89,10 @@ class ElementItem(QGraphicsRectItem):
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(rect)
 
-        # Draw the actual content (text or barcode) using the same
-        # renderer as the final print, so what you see is what you get.
-        # We render directly in local rect coords (top-left = 0,0).
         data = self.parent_view.sample_data
-        from core.printer import _draw_element_at_origin
         px_per_mm = 1.0 / self.mm_per_px
         _draw_element_at_origin(painter, self.element, data, px_per_mm, rect)
 
-        # Draw label badge above the rect when selected
         if self.isSelected():
             badge_w = max(40, len(self.element.label) * 7)
             badge_h = 14
@@ -116,7 +108,6 @@ class ElementItem(QGraphicsRectItem):
             painter.drawText(label_rect, Qt.AlignCenter, self.element.label)
 
     def itemChange(self, change, value):
-        # Handle position changes (drag, moveBy, setPos)
         if change == QGraphicsItem.ItemPositionHasChanged:
             px_per_mm = 1.0 / self.mm_per_px
             self.element.x_mm = self.pos().x() / px_per_mm
@@ -146,7 +137,6 @@ class ElementItem(QGraphicsRectItem):
             self.moveBy(0, step_px)
             event.accept()
         elif key == Qt.Key_Delete or key == Qt.Key_Backspace:
-            # Toggle the element off (it can be re-enabled in the property panel)
             self.element.enabled = False
             self.parent_view.element_changed.emit(self.element)
             self.parent_view.refresh()
@@ -156,21 +146,19 @@ class ElementItem(QGraphicsRectItem):
 
 
 class StickerScene(QGraphicsScene):
-    element_selection_changed = pyqtSignal(object)  # StickerElement or None
-    element_changed = pyqtSignal(object)           # StickerElement
+    element_selection_changed = pyqtSignal(object)
+    element_changed = pyqtSignal(object)
 
     def __init__(self, template: StickerTemplate, sample_data: dict,
                  parent=None):
         super().__init__(parent)
         self.template = template
         self.sample_data = sample_data
-        # 1 mm = 4 px by default in the editor
-        self.mm_per_px = 0.25  # 1 px = 0.25 mm
+        self.mm_per_px = 0.25
         self._build_items()
 
     def _build_items(self):
         self.clear()
-        # Draw the sticker outline (in scene coords: sticker_w_mm * px_per_mm)
         px_per_mm = 1.0 / self.mm_per_px
         sw = self.template.sticker_w_mm * px_per_mm
         sh = self.template.sticker_h_mm * px_per_mm
@@ -179,7 +167,6 @@ class StickerScene(QGraphicsScene):
         bg.setPen(QPen(QColor('#000000'), 0.5))
         bg.setZValue(-1)
         self.addItem(bg)
-        # Add each element
         for elem in self.template.elements:
             item = ElementItem(elem, self.mm_per_px, self)
             item.setZValue(1)
@@ -198,7 +185,6 @@ class StickerEditorDialog(QDialog):
                  parent=None):
         super().__init__(parent)
         self.template = template
-        # Ensure template's sticker size matches the layout
         self.template.sticker_w_mm = sticker_w_mm
         self.template.sticker_h_mm = sticker_h_mm
         self.sample_data = dict(sample_data)
@@ -221,7 +207,8 @@ class StickerEditorDialog(QDialog):
         left_layout = QVBoxLayout(left_box)
         left_layout.setContentsMargins(0, 0, 0, 0)
         title = QLabel("Click an element to select it, then drag to move. / "
-                       "عنصر کو منتخب کرنے کے لیے کلک کریں، پھر منتقل کرنے کے لیے drag کریں۔")
+                       "عنصر کو منتخب کرنے کے لیے کلک کریں، پھر منتقل کرنے کے لیے drag کریں۔\n"
+                       "Arrow keys: nudge 1mm (Shift = 0.1mm). Delete: disable element.")
         title.setStyleSheet("color: #1a4d8f; font-weight: bold;")
         title.setWordWrap(True)
         left_layout.addWidget(title)
@@ -231,11 +218,9 @@ class StickerEditorDialog(QDialog):
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setBackgroundBrush(QColor('#d0d0d0'))
         self.view.setMinimumSize(540, 400)
-        # Zoom in/out with Ctrl+wheel
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
         left_layout.addWidget(self.view, 1)
 
-        # Zoom buttons
         zoom_row = QHBoxLayout()
         self.zoom_in_btn = QPushButton("🔍+  Zoom In")
         self.zoom_in_btn.clicked.connect(self.on_zoom_in)
@@ -257,7 +242,6 @@ class StickerEditorDialog(QDialog):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Element list
         list_box = QGroupBox("Elements / عناصر")
         ll = QVBoxLayout(list_box)
         self.element_list = QListWidget()
@@ -265,16 +249,13 @@ class StickerEditorDialog(QDialog):
         ll.addWidget(self.element_list)
         right_layout.addWidget(list_box)
 
-        # Properties of selected element
         props_box = QGroupBox("Properties / خصوصیات")
         props_layout = QVBoxLayout(props_box)
 
-        # Enabled checkbox
         self.enabled_chk = QCheckBox("Enabled / فعال")
         self.enabled_chk.toggled.connect(self.on_enabled_toggled)
         props_layout.addWidget(self.enabled_chk)
 
-        # Position + size
         pos_grid = QFormLayout()
         pos_grid.setLabelAlignment(Qt.AlignRight)
         unit_sym = self.unit.symbol
@@ -313,7 +294,6 @@ class StickerEditorDialog(QDialog):
         self.rot_spin.valueChanged.connect(self.on_geom_changed)
         pos_grid.addRow("Rotation:", self.rot_spin)
 
-        # Quick rotate buttons
         rot_row = QHBoxLayout()
         for angle, label in [(-90, "↺ 90°"), (0, "0°"), (90, "↻ 90°"),
                               (180, "⇅ 180°")]:
@@ -323,7 +303,6 @@ class StickerEditorDialog(QDialog):
         rot_row.addStretch(1)
         pos_grid.addRow("Quick rotate:", rot_row)
 
-        # Align buttons
         align_row = QHBoxLayout()
         for code, label, icon in [('left', 'Left', '⬅'), ('center', 'Center', '↔'), ('right', 'Right', '➡')]:
             b = QPushButton(f"{icon} {label}")
@@ -334,7 +313,6 @@ class StickerEditorDialog(QDialog):
 
         props_layout.addLayout(pos_grid)
 
-        # Font settings
         font_box = QGroupBox("Font / فونٹ")
         fl = QFormLayout(font_box)
         fl.setLabelAlignment(Qt.AlignRight)
@@ -366,7 +344,6 @@ class StickerEditorDialog(QDialog):
 
         props_layout.addWidget(font_box)
 
-        # Element info
         self.elem_info = QLabel("")
         self.elem_info.setStyleSheet("color: #555; font-size: 11px;")
         self.elem_info.setWordWrap(True)
@@ -375,7 +352,6 @@ class StickerEditorDialog(QDialog):
 
         right_layout.addWidget(props_box, 1)
 
-        # Bottom action buttons
         actions = QHBoxLayout()
         self.reset_btn = QPushButton("↺ Reset to Default")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
@@ -384,7 +360,7 @@ class StickerEditorDialog(QDialog):
 
         root.addWidget(right, 0)
 
-        # Dialog buttons (bottom)
+        # Bottom action buttons
         btns_box = QWidget()
         btns_layout = QHBoxLayout(btns_box)
         btns_layout.setContentsMargins(0, 0, 0, 0)
@@ -402,9 +378,7 @@ class StickerEditorDialog(QDialog):
         self.scene.element_selection_changed.connect(self._on_selection_changed)
         self.scene.element_changed.connect(self._on_element_changed)
 
-        # Populate element list
         self._populate_element_list()
-        # Initial fit after dialog is shown
         QTimer.singleShot(50, self.on_fit)
 
     def _populate_element_list(self):
@@ -417,7 +391,6 @@ class StickerEditorDialog(QDialog):
             self.element_list.addItem(QListWidgetItem(label))
         self.element_list.blockSignals(False)
 
-    # ---------------------------------------------------------- events
     def on_zoom_in(self):
         self.view.scale(1.25, 1.25)
 
@@ -427,7 +400,6 @@ class StickerEditorDialog(QDialog):
     def on_fit(self):
         sw = self.template.sticker_w_mm * (1.0 / self.scene.mm_per_px)
         sh = self.template.sticker_h_mm * (1.0 / self.scene.mm_per_px)
-        # Add some margin
         margin = 20
         vw = self.view.viewport().width() - 2 * margin
         vh = self.view.viewport().height() - 2 * margin
@@ -436,38 +408,32 @@ class StickerEditorDialog(QDialog):
         sx = vw / sw
         sy = vh / sh
         s = min(sx, sy)
-        # Reset transform then scale
         self.view.setTransform(QTransform.fromScale(s, s))
 
     def on_list_row_changed(self, row: int):
         if row < 0 or row >= len(self.template.elements):
             return
         elem = self.template.elements[row]
-        # Select the matching item in the scene
         for it in self.scene.items():
             if isinstance(it, ElementItem) and it.element is elem:
                 it.setSelected(True)
                 break
 
     def _on_selection_changed(self, element: Optional[StickerElement]):
-        """Update the property panel to reflect the selected element."""
         if element is None:
             self.elem_info.setText("No element selected.\n"
                                    "Click on an element in the preview to edit it.")
             return
-        # Sync list selection
         for i, e in enumerate(self.template.elements):
             if e is element:
                 self.element_list.blockSignals(True)
                 self.element_list.setCurrentRow(i)
                 self.element_list.blockSignals(False)
                 break
-        # Block signals while populating
         for w in [self.x_spin, self.y_spin, self.w_spin, self.h_spin,
                   self.rot_spin, self.font_size, self.font_combo,
                   self.bold_chk, self.italic_chk, self.enabled_chk]:
             w.blockSignals(True)
-        # Convert mm to current unit
         self.x_spin.setValue(self.unit.from_mm(element.x_mm))
         self.y_spin.setValue(self.unit.from_mm(element.y_mm))
         self.w_spin.setValue(self.unit.from_mm(element.w_mm))
@@ -488,7 +454,6 @@ class StickerEditorDialog(QDialog):
             w.blockSignals(False)
 
     def _on_element_changed(self, element: StickerElement):
-        """An element was dragged in the scene; update the property panel."""
         for w in [self.x_spin, self.y_spin]:
             w.blockSignals(True)
         self.x_spin.setValue(self.unit.from_mm(element.x_mm))
@@ -498,7 +463,6 @@ class StickerEditorDialog(QDialog):
         self.scene.invalidate()
 
     def on_geom_changed(self):
-        """Property panel changed — update the element."""
         sel = self._selected_element()
         if sel is None:
             return
@@ -563,10 +527,8 @@ class StickerEditorDialog(QDialog):
         return None
 
     def _refresh_scene(self):
-        # Remember which element was selected
         sel = self._selected_element()
         self.scene.refresh()
-        # Re-select it
         if sel is not None:
             for it in self.scene.items():
                 if isinstance(it, ElementItem) and it.element is sel:

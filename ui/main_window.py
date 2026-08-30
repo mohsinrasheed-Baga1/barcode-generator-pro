@@ -1,11 +1,12 @@
 """
-Main window for the Barcode Generator (v2.0).
+Main window for the Barcode Generator (v2.0.4).
 """
 import os
 import json
+import traceback
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import Qt, QSize, QRectF, QDate, QTimer
+from PyQt5.QtCore import Qt, QSize, QSizeF, QRectF, QRect, QDate, QTimer
 from PyQt5.QtGui import (
     QPixmap, QImage, QPainter, QColor, QFont, QPen,
     QIcon, QStandardItemModel, QStandardItem, QPalette, QPageSize
@@ -18,7 +19,7 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QApplication, QStatusBar,
     QInputDialog, QDialogButtonBox, QListWidget, QListWidgetItem
 )
-from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintDialog
+from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintDialog, QPrinterInfo
 
 from core.barcode_gen import make_full_ean13, validate_ean13
 from core.database import Database
@@ -31,15 +32,17 @@ from core.templates import (StickerTemplate, StickerElement,
                               template_from_json)
 from core.units import MM, IN, get_unit, format_value
 from core.printer import (print_sticker_sheet, render_preview,
-                            export_to_pdf, render_single_sticker_preview)
+                            export_to_pdf, render_single_sticker_preview,
+                            diagnose_printer)
 from ui.settings_dialog import (SettingsDialog, get_font_sizes_from_settings,
                                    get_unit_from_settings)
 from ui.history_dialog import HistoryDialog
 from ui.sticker_editor import StickerEditorDialog
+from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.4"
 
 
 class MainWindow(QMainWindow):
@@ -210,21 +213,31 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(layout_box)
 
+        # Print buttons — three options
         print_row = QHBoxLayout()
         self.print_btn = QPushButton("🖨 Print\nپرنٹ")
         self.print_btn.setStyleSheet("background: #1a4d8f; color: white; padding: 10px; font-weight: bold;")
         self.print_btn.clicked.connect(self.on_print_clicked)
         print_row.addWidget(self.print_btn)
 
-        self.preview_btn = QPushButton("👁 Preview\nپریویو")
-        self.preview_btn.clicked.connect(self.on_preview_clicked)
-        print_row.addWidget(self.preview_btn)
+        self.quick_print_btn = QPushButton("⚡ Quick Print\nفوری پرنٹ")
+        self.quick_print_btn.setStyleSheet("background: #2e7d32; color: white; padding: 10px;")
+        self.quick_print_btn.clicked.connect(self.on_quick_print_clicked)
+        print_row.addWidget(self.quick_print_btn)
 
         self.pdf_btn = QPushButton("📄 Save as PDF\nPDF محفوظ کریں")
         self.pdf_btn.setStyleSheet("background: #b85c00; color: white; padding: 10px;")
         self.pdf_btn.clicked.connect(self.on_save_pdf_clicked)
         print_row.addWidget(self.pdf_btn)
         left_layout.addLayout(print_row)
+
+        # Preview button (separate row, smaller)
+        prev_row = QHBoxLayout()
+        self.preview_btn = QPushButton("👁 Preview / پریویو")
+        self.preview_btn.clicked.connect(self.on_preview_clicked)
+        prev_row.addWidget(self.preview_btn)
+        prev_row.addStretch(1)
+        left_layout.addLayout(prev_row)
 
         sec_row = QHBoxLayout()
         self.settings_btn = QPushButton("⚙ Settings")
@@ -502,15 +515,199 @@ class MainWindow(QMainWindow):
             ])
             i = j
 
-    # ----------------------------------------------- print/preview (CRITICAL FIX)
+    # ----------------------------------------------- print (CUSTOM DIALOG — FIX)
+    def on_print_clicked(self):
+        """Print button — shows custom PrintSetupDialog (no QPrintDialog).
+        This is more reliable in PyInstaller-bundled apps."""
+        if not self.current_items:
+            QMessageBox.warning(self, "Empty",
+                                "Please add at least one sticker first.")
+            return
+        lay = self._current_layout()
+
+        # Show our custom print setup dialog
+        try:
+            dlg = PrintSetupDialog(
+                lay,
+                default_copies=self.copies_spin.value(),
+                parent=self,
+                test_print_callback=self._do_test_print
+            )
+            if dlg.exec_() != QDialog.Accepted:
+                self.statusBar().showMessage("Print cancelled by user.", 3000)
+                return
+            printer = dlg.make_printer()
+            copies = dlg.selected_copies()
+            self.copies_spin.setValue(copies)
+        except Exception as e:
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "Print setup failed",
+                f"Could not open the print setup dialog:\n\n{e}\n\n"
+                f"Technical details:\n{tb}\n\n"
+                f"Try 'Save as PDF' as a backup option.")
+            return
+
+        # Now print using the user's selected printer
+        try:
+            n_items = len(self.current_items)
+            print_sticker_sheet(lay, self.current_items, self.template,
+                                 printer=printer, copies=None)  # use printer's copies
+            # Success message with diagnostic info
+            self.statusBar().showMessage(
+                f"✓ Print sent to: {printer.printerName()}  |  "
+                f"Copies: {printer.copyCount()}  |  "
+                f"Items: {n_items}",
+                8000
+            )
+            QMessageBox.information(
+                self, "Print Submitted / پرنٹ بھیج دیا گیا",
+                f"✓ Print job submitted to:\n  {printer.printerName()}\n\n"
+                f"Copies: {printer.copyCount()}\n"
+                f"Items: {n_items}\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
+                f"If the print doesn't come out within a minute:\n"
+                f"  • Check printer is turned ON and has paper/labels\n"
+                f"  • Check Windows Print Queue (Control Panel > Devices & Printers)\n"
+                f"  • Make sure label size in printer Properties matches software\n\n"
+                f"Backup option: Use 'Save as PDF' button to save a PDF,\n"
+                f"then open in Adobe Acrobat / Edge and print from there.\n"
+                f"(In PDF viewer: set Page Size to 'Actual Size' — no scaling)"
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "Print failed / پرنٹ ناکام",
+                f"Could not print to {printer.printerName()}:\n\n{e}\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
+                f"Technical details:\n{tb}\n\n"
+                f"Possible causes:\n"
+                f"  • Printer is offline or has paper jam\n"
+                f"  • Wrong label/paper size in printer Properties — "
+                f"required: {lay.paper_w_mm} × {lay.paper_h_mm} mm\n"
+                f"  • Printer driver issue\n\n"
+                f"Try 'Save as PDF' as a backup — it always works.")
+
+    def _do_test_print(self, printer_info):
+        """Print a single test label using the given printer info.
+        Uses the first item in queue, or builds a test sample if queue is empty."""
+        lay = self._current_layout()
+        try:
+            if self.current_items:
+                test_items = [self.current_items[0]]
+            else:
+                test_items = [{
+                    'company_name': 'TEST PRINT',
+                    'product_name': 'Sample Product',
+                    'product_code': 'TEST-001',
+                    'barcode': '501234567890',
+                    'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
+                    'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
+                    'mobile': self.mobile_edit.text() or '+92 300 1234567',
+                }]
+            printer = QPrinter(printer_info, QPrinter.PrinterResolution)
+            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
+                                           QPageSize.Millimeter))
+            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+            printer.setFullPage(True)
+            printer.setCopyCount(1)
+            print_sticker_sheet(lay, test_items, self.template,
+                                 printer=printer, copies=None)
+            QMessageBox.information(
+                self, "Test Print Sent / ٹیسٹ پرنٹ بھیج دیا گیا",
+                f"✓ Test print sent to:\n  {printer.printerName()}\n\n"
+                f"1 test label should now print.\n\n"
+                f"📋 Diagnostic info:\n{diagnose_printer(printer, lay)}\n\n"
+                f"If the test label comes out correctly:\n"
+                f"  → Click '🖨 Print' to print all your labels.\n\n"
+                f"If the test print didn't come out correctly:\n"
+                f"  1. Use '⚙ Printer Properties' to set label size to "
+                f"{lay.paper_w_mm} × {lay.paper_h_mm} mm\n"
+                f"  2. Select a different preset that matches your label roll\n"
+                f"  3. Use 'Save as PDF' as a backup"
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "Test Print Failed / ٹیسٹ پرنٹ ناکام",
+                f"Could not test print:\n\n{e}\n\n"
+                f"Technical details:\n{tb}")
+
+    def on_quick_print_clicked(self):
+        """Quick Print — uses the system default printer, no dialog.
+        Best for when you just want to send to your default printer."""
+        if not self.current_items:
+            QMessageBox.warning(self, "Empty",
+                                "Please add at least one sticker first.")
+            return
+        lay = self._current_layout()
+
+        # Get default printer
+        try:
+            default_info = QPrinterInfo.defaultPrinter()
+            if default_info is None or default_info.isNull():
+                QMessageBox.warning(self, "No default printer",
+                    "No default printer is set on this system.\n\n"
+                    "Please:\n"
+                    "  1. Open Windows Settings > Printers & scanners\n"
+                    "  2. Set a printer as 'Set as default'\n"
+                    "  3. Or use the regular 'Print' button to pick a printer")
+                return
+            printer_name = default_info.printerName()
+        except Exception as e:
+            QMessageBox.warning(self, "Error",
+                f"Could not get default printer:\n{e}")
+            return
+
+        # Ask for confirmation + copies
+        copies, ok = QInputDialog.getInt(
+            self,
+            "Quick Print / فوری پرنٹ",
+            f"Send to default printer: {printer_name}\n"
+            f"ڈیفالٹ پرنٹر پر بھیجیں\n\n"
+            f"Copies / کاپیاں:",
+            self.copies_spin.value(), 1, 999, 1
+        )
+        if not ok:
+            return
+        self.copies_spin.setValue(copies)
+
+        # Print directly
+        try:
+            printer = QPrinter(default_info, QPrinter.PrinterResolution)
+            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
+                                           QPageSize.Millimeter))
+            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
+            printer.setCopyCount(copies)
+
+            n_items = len(self.current_items)
+            print_sticker_sheet(lay, self.current_items, self.template,
+                                 printer=printer, copies=None)
+            self.statusBar().showMessage(
+                f"✓ Quick Print sent to: {printer_name}  |  "
+                f"Copies: {copies}  |  Items: {n_items}",
+                8000
+            )
+            QMessageBox.information(
+                self, "Quick Print Sent",
+                f"✓ Print job sent to default printer:\n  {printer_name}\n\n"
+                f"Copies: {copies}\n"
+                f"Items: {n_items}\n\n"
+                f"If print doesn't come out, use the regular 'Print' button\n"
+                f"to choose a different printer."
+            )
+        except Exception as e:
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "Quick Print failed",
+                f"Could not quick print to {printer_name}:\n\n{e}\n\n"
+                f"Technical details:\n{tb}\n\n"
+                f"Try the regular 'Print' button or 'Save as PDF'.")
+
     def on_preview_clicked(self):
+        """Preview using QPrintPreviewDialog."""
         if not self.current_items:
             QMessageBox.warning(self, "Empty",
                                 "Please add at least one sticker first.")
             return
         lay = self._current_layout()
         try:
-            # Use PrinterResolution for better printer compatibility
             printer = QPrinter(QPrinter.PrinterResolution)
             printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
                                            QPageSize.Millimeter))
@@ -525,130 +722,22 @@ class MainWindow(QMainWindow):
             dlg.paintRequested.connect(lambda p: self._print_to(p))
             dlg.exec_()
         except Exception as e:
+            tb = traceback.format_exc()
             QMessageBox.critical(self, "Preview failed",
                 f"Could not open the print preview:\n{e}\n\n"
+                f"Technical details:\n{tb}\n\n"
                 f"Try 'Save as PDF' instead — it always works.")
 
     def _print_to(self, printer: QPrinter):
         lay = self._current_layout()
         try:
-            # Don't override copies — printer already has them from dialog
             print_sticker_sheet(lay, self.current_items, self.template,
                                  printer=printer, copies=None)
         except Exception as e:
             print(f"Print error: {e}")
 
-    def on_print_clicked(self):
-        """Print button — shows a setup dialog asking which printer + copies,
-        then opens the system print dialog for confirmation."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first.")
-            return
-        lay = self._current_layout()
-
-        # ---- Step 1: Pre-print setup dialog (copies count) ----
-        # The system print dialog already asks which printer + copies,
-        # but we show a friendly setup dialog first to make it explicit.
-        n_items = len(self.current_items)
-        copies, ok = QInputDialog.getInt(
-            self,
-            "Print Setup / پرنٹ سیٹ اپ",
-            f"How many copies of each sticker?\n"
-            f"ہر اسٹیکر کی کتنی کاپیاں پرنٹ کریں؟\n\n"
-            f"Items in queue: {n_items}\n"
-            f"Layout: {lay.name}\n"
-            f"Sticker size: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm\n\n"
-            f"Total labels to print = items × copies",
-            self.copies_spin.value(), 1, 999, 1
-        )
-        if not ok:
-            return  # user cancelled
-        self.copies_spin.setValue(copies)
-
-        # ---- Step 2: Open system print dialog ----
-        try:
-            # PrinterResolution mode respects the printer's native DPI —
-            # critical for label printers (Zebra, TSC, Xprinter, Godex)
-            printer = QPrinter(QPrinter.PrinterResolution)
-            printer.setPageSize(QPageSize(QSizeF(lay.paper_w_mm, lay.paper_h_mm),
-                                           QPageSize.Millimeter))
-            printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
-            printer.setCopyCount(copies)
-
-            if not printer.isValid():
-                QMessageBox.warning(self, "No printer",
-                    "No valid printer found on this system.\n\n"
-                    "Please install a printer driver, or use the "
-                    "'Save as PDF' button instead.\n\n"
-                    "PDF files can be opened and printed from any "
-                    "PDF viewer (Adobe Acrobat, Microsoft Edge, etc.).")
-                return
-
-            # For label mode, show a brief reminder
-            if lay.is_label:
-                QMessageBox.information(
-                    self, "Label Printer Mode — Reminder",
-                    "🖨 Label Printer Mode is ON.\n\n"
-                    "In the next dialog (Print):\n"
-                    "  • SELECT your label printer\n"
-                    "    (Zebra, TSC, Xprinter, Godex, etc.)\n"
-                    "  • Set the label size in the printer's Properties\n"
-                    "    to match what you selected here\n"
-                    "    (currently: "
-                    f"{lay.sticker_w_mm} × {lay.sticker_h_mm} mm)\n"
-                    "  • Do NOT select an A4 paper printer\n\n"
-                    "Tip: If the print doesn't come out, try 'Save as PDF' "
-                    "and print from a PDF viewer."
-                )
-
-            # Show the system print dialog (asks which printer + copies)
-            dlg = QPrintDialog(printer, self)
-            dlg.setWindowTitle("Select Printer / پرنٹر منتخب کریں")
-            # Make sure all options are shown
-            dlg.setOption(QPrintDialog.PrintShowPageSize, True)
-
-            if dlg.exec_() == QDialog.Accepted:
-                # The user confirmed. The printer now has their selections.
-                try:
-                    print_sticker_sheet(lay, self.current_items,
-                                         self.template,
-                                         printer=printer,
-                                         copies=None)  # use printer's copies
-                    # Success message
-                    self.statusBar().showMessage(
-                        f"✓ Print sent to: {printer.printerName()}  |  "
-                        f"Copies: {printer.copyCount()}  |  "
-                        f"Items: {n_items}",
-                        8000
-                    )
-                    QMessageBox.information(
-                        self, "Print Submitted",
-                        f"✓ Print job submitted to:\n"
-                        f"  {printer.printerName()}\n\n"
-                        f"Copies: {printer.copyCount()}\n"
-                        f"Items per page: {n_items}\n\n"
-                        f"Total pages: "
-                        f"{(n_items + total_slots(lay) - 1) // total_slots(lay) * printer.copyCount()}\n\n"
-                        f"If the print doesn't come out, please check:\n"
-                        f"  • Printer is turned on and has paper/labels\n"
-                        f"  • Printer is set as the default Windows printer\n"
-                        f"  • Label size in printer driver matches software\n\n"
-                        f"You can also try 'Save as PDF' as a backup."
-                    )
-                except Exception as e:
-                    QMessageBox.critical(self, "Print error",
-                        f"Printing failed:\n{e}\n\n"
-                        f"Try 'Save as PDF' instead — it always works.")
-            else:
-                self.statusBar().showMessage("Print cancelled by user.", 3000)
-        except Exception as e:
-            QMessageBox.critical(self, "Print failed",
-                f"Could not open the print dialog:\n{e}\n\n"
-                f"Try 'Save as PDF' instead — it always works.")
-
     def on_save_pdf_clicked(self):
-        """Always-works alternative to direct printing."""
+        """Save as PDF — always works, no printer needed."""
         if not self.current_items:
             QMessageBox.warning(self, "Empty",
                                 "Please add at least one sticker first.")
@@ -662,9 +751,20 @@ class MainWindow(QMainWindow):
             return
         try:
             export_to_pdf(lay, self.current_items, self.template, path)
-            QMessageBox.information(self, "Saved",
-                f"PDF saved to:\n{path}\n\n"
-                f"You can now open this PDF and print it from any PDF viewer.")
+            QMessageBox.information(self, "PDF Saved / PDF محفوظ ہو گیا",
+                f"✓ PDF saved to:\n{path}\n\n"
+                f"To print this PDF:\n"
+                f"  1. Open it in Adobe Acrobat, Microsoft Edge, or any PDF viewer\n"
+                f"  2. Press Ctrl+P (or File > Print)\n"
+                f"  3. CRITICAL: In Page Size & Handling, select 'Actual size'\n"
+                f"     (NOT 'Fit' or 'Shrink to fit')\n"
+                f"  4. Set Page Orientation to 'Auto'\n"
+                f"  5. Set Margins to 'None' or 'Minimum'\n"
+                f"  6. Select your label printer (if label mode)\n"
+                f"     or A4 printer (if sheet mode)\n"
+                f"  7. Click Print\n\n"
+                f"If the print is wrong size, the PDF viewer is auto-scaling it.\n"
+                f"Look for 'Page Sizing' or 'Scale' settings and set to 100%.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
 

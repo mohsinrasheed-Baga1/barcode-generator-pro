@@ -3,9 +3,6 @@ Sticker template system - each element on the sticker is independently
 configurable: position (x,y), size (w,h), rotation, font family, font size,
 bold, alignment, and visibility (on/off).
 
-A template defines the LAYOUT. The actual data (company name, barcode
-digits, etc.) is supplied at print time and merged with the template.
-
 Element ids (fixed):
     company_name    — Company name (top)
     product_name    — Product name (optional, below company)
@@ -22,37 +19,33 @@ import json
 
 @dataclass
 class StickerElement:
-    id: str                 # 'company_name', 'barcode', etc.
-    label: str              # human-readable name (for the editor UI)
+    id: str
+    label: str
     enabled: bool = True
-    # All dimensions in millimeters relative to sticker top-left corner
     x_mm: float = 0.0
     y_mm: float = 0.0
     w_mm: float = 38.0
     h_mm: float = 5.0
-    rotation: float = 0.0   # degrees, clockwise
-    # Font settings
+    rotation: float = 0.0
     font_family: str = 'Arial'
-    font_size_pt: float = 7.0  # points (1 pt = 1/72 inch)
+    font_size_pt: float = 7.0
     bold: bool = False
     italic: bool = False
-    align: str = 'center'   # 'left', 'center', 'right'
-    color: str = '#000000'  # hex
+    align: str = 'center'
+    color: str = '#000000'
 
 
 @dataclass
 class StickerTemplate:
-    """A complete sticker layout — list of elements + sticker size."""
     name: str = 'Default'
     sticker_w_mm: float = 38.0
     sticker_h_mm: float = 21.2
     elements: List[StickerElement] = field(default_factory=list)
     background_color: str = '#FFFFFF'
     border_color: str = '#000000'
-    border_width_mm: float = 0.2  # 0 = no border
+    border_width_mm: float = 0.2
 
 
-# ---------------------------------------------------- default templates
 def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_barcode: bool = True,
                      include_product_name: bool = True,
@@ -60,25 +53,19 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_dates: bool = True,
                      include_mobile: bool = True,
                      include_company: bool = True) -> StickerTemplate:
-    """
-    Auto-build a sensible default template for a given sticker size.
-    Elements are stacked vertically top-to-bottom.
-    """
-    # Scale font sizes based on sticker size
+    """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
-    company_pt = max(4.0, min(14.0, base_h * 0.18))   # ~18% of sticker height
+    company_pt = max(4.0, min(14.0, base_h * 0.18))
     body_pt    = max(3.0, min(11.0, base_h * 0.14))
     small_pt   = max(3.0, min(10.0, base_h * 0.12))
     barcode_pt = max(3.0, min(11.0, base_h * 0.13))
 
-    # Barcode takes ~35% of sticker height
     barcode_h = base_h * 0.35
     barcode_digit_h = base_h * 0.08
 
     elements: List[StickerElement] = []
-    y = 0.5  # start with tiny margin
+    y = 0.5
 
-    # Company name at top
     if include_company:
         elements.append(StickerElement(
             id='company_name',
@@ -94,7 +81,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += base_h * 0.18
 
-    # Product name (optional)
     if include_product_name:
         elements.append(StickerElement(
             id='product_name',
@@ -110,7 +96,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += base_h * 0.13
 
-    # Barcode (center)
     if include_barcode:
         elements.append(StickerElement(
             id='barcode',
@@ -122,7 +107,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += barcode_h
 
-        # Barcode digits below the bars
         elements.append(StickerElement(
             id='barcode_digits',
             label='Barcode Digits / بارکوڈ ہندسے',
@@ -137,7 +121,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += barcode_digit_h
 
-    # Product code
     if include_product_code:
         elements.append(StickerElement(
             id='product_code',
@@ -153,7 +136,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += base_h * 0.13
 
-    # Dates
     if include_dates:
         elements.append(StickerElement(
             id='dates',
@@ -169,7 +151,6 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += base_h * 0.12
 
-    # Mobile
     if include_mobile:
         elements.append(StickerElement(
             id='mobile',
@@ -193,9 +174,7 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
     )
 
 
-# ---------------------------------------------------- serialization
 def template_to_json(t: StickerTemplate) -> str:
-    """Serialize a template to JSON string."""
     d = {
         'name': t.name,
         'sticker_w_mm': t.sticker_w_mm,
@@ -209,7 +188,6 @@ def template_to_json(t: StickerTemplate) -> str:
 
 
 def template_from_json(s: str) -> StickerTemplate:
-    """Deserialize a template from JSON string."""
     d = json.loads(s)
     elements = [StickerElement(**e) for e in d.get('elements', [])]
     return StickerTemplate(
@@ -223,9 +201,7 @@ def template_from_json(s: str) -> StickerTemplate:
     )
 
 
-# ---------------------------------------------------- data merge
 def get_text_for_element(element_id: str, data: dict) -> str:
-    """Get the text to render for a given element id from data dict."""
     if element_id == 'company_name':
         return data.get('company_name', '')
     if element_id == 'product_name':
@@ -234,7 +210,7 @@ def get_text_for_element(element_id: str, data: dict) -> str:
         c = data.get('product_code', '')
         return f"Code: {c}" if c else ''
     if element_id == 'barcode':
-        return ''  # barcode is an image, not text
+        return ''
     if element_id == 'barcode_digits':
         return data.get('barcode', '')
     if element_id == 'dates':
@@ -254,5 +230,4 @@ def get_text_for_element(element_id: str, data: dict) -> str:
 
 
 def enabled_elements(template: StickerTemplate) -> List[StickerElement]:
-    """Return only enabled elements (in order)."""
     return [e for e in template.elements if e.enabled]

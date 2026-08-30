@@ -73,6 +73,7 @@ SHEET_PRESETS = {
 # Direct label printers (Zebra GC420, TSC TDP-225, Godex RT, Xprinter, etc.)
 # Each preset = one label, paper size = label size, 1 sticker per "page".
 LABEL_PRESETS = {
+    # ---------- MM-based presets ----------
     'LBL-50x30': StickerLayout(
         name='[Label] 50 x 30 mm  (price tag)',
         paper_w_mm=50, paper_h_mm=30,
@@ -127,6 +128,62 @@ LABEL_PRESETS = {
         margin_x_mm=1.0, margin_y_mm=1.0,
         gap_x_mm=0, gap_y_mm=0,
         sticker_w_mm=78, sticker_h_mm=58,
+        cols=1, rows=1, is_label=True,
+    ),
+
+    # ---------- Inch-based presets (common label roll sizes) ----------
+    # 1.5" x 1" = 38.1 x 25.4 mm  — user's label size, jumbo price tag
+    'LBL-1.5x1in': StickerLayout(
+        name='[Label] 1.5 x 1 inch  (38.1 x 25.4 mm)  ★ آپ کا لیبل',
+        paper_w_mm=38.1, paper_h_mm=25.4,
+        margin_x_mm=0.5, margin_y_mm=0.5,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=37.1, sticker_h_mm=24.4,
+        cols=1, rows=1, is_label=True,
+    ),
+    # 2" x 1" = 50.8 x 25.4 mm  — common barcode label
+    'LBL-2x1in': StickerLayout(
+        name='[Label] 2 x 1 inch  (50.8 x 25.4 mm)',
+        paper_w_mm=50.8, paper_h_mm=25.4,
+        margin_x_mm=0.5, margin_y_mm=0.5,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=49.8, sticker_h_mm=24.4,
+        cols=1, rows=1, is_label=True,
+    ),
+    # 3" x 1" = 76.2 x 25.4 mm  — address/shipping label
+    'LBL-3x1in': StickerLayout(
+        name='[Label] 3 x 1 inch  (76.2 x 25.4 mm)',
+        paper_w_mm=76.2, paper_h_mm=25.4,
+        margin_x_mm=0.5, margin_y_mm=0.5,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=75.2, sticker_h_mm=24.4,
+        cols=1, rows=1, is_label=True,
+    ),
+    # 3" x 2" = 76.2 x 50.8 mm  — small product label
+    'LBL-3x2in': StickerLayout(
+        name='[Label] 3 x 2 inch  (76.2 x 50.8 mm)',
+        paper_w_mm=76.2, paper_h_mm=50.8,
+        margin_x_mm=0.8, margin_y_mm=0.8,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=74.6, sticker_h_mm=49.2,
+        cols=1, rows=1, is_label=True,
+    ),
+    # 4" x 2" = 101.6 x 50.8 mm  — large product label
+    'LBL-4x2in': StickerLayout(
+        name='[Label] 4 x 2 inch  (101.6 x 50.8 mm)',
+        paper_w_mm=101.6, paper_h_mm=50.8,
+        margin_x_mm=1.0, margin_y_mm=1.0,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=99.6, sticker_h_mm=48.8,
+        cols=1, rows=1, is_label=True,
+    ),
+    # 4" x 6" = 101.6 x 152.4 mm  — shipping label (US standard)
+    'LBL-4x6in': StickerLayout(
+        name='[Label] 4 x 6 inch  (101.6 x 152.4 mm)  shipping',
+        paper_w_mm=101.6, paper_h_mm=152.4,
+        margin_x_mm=1.5, margin_y_mm=1.5,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=98.6, sticker_h_mm=149.4,
         cols=1, rows=1, is_label=True,
     ),
 }

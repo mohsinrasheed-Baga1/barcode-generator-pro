@@ -63,12 +63,6 @@ jobs:
             --collect-all barcode ^
             --hidden-import PyQt5.QtPrintSupport ^
             --hidden-import PyQt5.QtSvg ^
-            --hidden-import PyQt5.QtWidgets ^
-            --hidden-import PyQt5.QtGui ^
-            --hidden-import PyQt5.QtCore ^
-            --hidden-import barcode ^
-            --hidden-import barcode.ean ^
-            --hidden-import barcode.writer ^
             main.py
 
       - name: Verify EXE exists
@@ -133,44 +127,58 @@ jobs:
 
             ### Downloads
             - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
-              Installs to `Program Files\Barcode Generator Pro`,
-              creates Start Menu + Desktop shortcuts.
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new in v2.0.1
+            ### What's new in v2.0.4
 
-            #### Bug fixes:
-            - **Fixed**: Sticker editor — drag/arrow keys now correctly move elements
-              (previously element positions didn't update properly during drag,
-              so only "slight movement" was possible).
-            - **Fixed**: Text in sticker elements no longer gets clipped
-              (added Qt.TextDontClip flag to drawText).
-            - **Fixed**: Print button now properly asks which printer + how many
-              copies (added a friendly setup dialog before the system print dialog).
-            - **Fixed**: Copy count no longer overridden to 1 when print dialog returns.
-            - **Improved**: Use QPrinter.PrinterResolution for better compatibility
-              with label printers (Zebra, TSC, Xprinter, Godex).
-            - **Added**: Status bar messages confirm print job submission with
-              printer name and copy count.
-            - **Added**: Keyboard arrow keys nudge selected element (1mm normal,
-              0.1mm with Shift). Delete/Backspace disables element.
-            - **Added**: Success message after print submission with troubleshooting
-              tips if print doesn't come out.
+            #### 🚨 CRITICAL FIX: Print button crash on 'QSizeF is not defined'
 
-            ### What's new in v2.0.0
-            - Interactive Sticker Layout Editor — drag, resize, rotate any element
+            The v2.0.3 release had a missing import — `QSizeF` was being
+            used in `main_window.py` (in `_do_test_print`, `on_quick_print_clicked`,
+            and `on_preview_clicked`) but was never imported! This caused
+            the Print button to fail with `NameError: name 'QSizeF' is not defined`
+            on every Windows system.
+
+            Fix: Added `QSizeF` to the `from PyQt5.QtCore import ...` statement.
+
+            I'm very sorry this took 4 releases to fix — the root cause was
+            an inadequate test that didn't actually invoke the print code path
+            on a real PyQt5 install. I've now added a comprehensive import
+            audit test (`scripts/test_imports.py`) that checks every Qt class
+            used in the codebase against the imports in each file. This
+            prevents any future 'X is not defined' bugs from reaching users.
+
+            #### New: Preview now shows actual sticker size with ruler
+
+            The preview pane now displays:
+            - A bold header showing "Sticker size: 38.1 × 25.4 mm (1.50 × 1.00 in)"
+            - Ruler ticks (cm and mm marks) along the top and left of the paper
+            - For label mode: dimension lines on the sticker showing actual
+              width and height (e.g. "37.1 mm" and "24.4 mm")
+            - Gray background so the white paper/sticker is clearly visible
+
+            This lets you verify the sticker size at a glance — you can even
+            hold your physical label up to the screen to confirm it matches.
+
+            #### Earlier features (still included)
+            - Custom Print Setup Dialog (replaces unreliable QPrintDialog)
+            - Quick Print button — sends to default printer
+            - Test Print button — print 1 label as test
+            - Printer info display with ✓/✗ match indicator
+            - Diagnostic info in error messages
+            - setFullPage(True) for proper label printing
+            - 13 preset label sizes including 1.5×1 inch (user's label)
+            - Interactive Sticker Layout Editor with drag, resize, rotate
+            - Keyboard arrow keys nudge elements (1mm / 0.1mm with Shift)
+            - Delete key disables element
             - Barcode optional (Include Barcode toggle)
-            - Save as PDF button — always works, no printer needed
-            - mm / inches unit toggle in Settings
+            - Save as PDF — always works
+            - mm / inches unit toggle
             - Per-element font family, size, bold, italic, color, alignment
-            - Better error messages with "Save as PDF" fallback
-
-            ### Older features (still included)
-            - EAN-13 barcode generator with checksum validation
+            - EAN-13 barcode generator
             - Sheet printer mode (A4 — 40/24/80/12 stickers per sheet)
-            - Label printer mode (direct — Zebra, TSC, Xprinter, Godex, etc.)
-              with 7 preset label sizes + custom size
-            - Company name, product name, product code, Mfg/Exp dates, mobile number
+            - Label printer mode (Zebra, TSC, Xprinter, Godex, Rongta)
+            - Company name, product name, product code, Mfg/Exp dates, mobile
             - Bulk CSV import
             - SQLite history (search + reuse)
             - Bilingual UI (English + Urdu)

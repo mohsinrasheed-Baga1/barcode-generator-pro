@@ -1,227 +1,140 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.1
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.4
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.0.1):
-  ✔ Drag bug fix — اب ہر عنصر کو مکمل طور پر drag کریں،
-    جتنا چاہیں move کریں (پہلے صرف تھوڑا move ہوتا تھا)
-  ✔ Arrow keys — منتخب عنصر کو arrow keys سے nudge کریں
-    (1mm normal, 0.1mm with Shift)
-  ✔ Delete key — منتخب عنصر کو disable کرنے کے لیے
-  ✔ Print dialog improvement — پرنٹ بٹن دبانے پر پہلے copies
-    پوچھتا ہے، پھر standard print dialog کھلتا ہے (printer
-    selection)
-  ✔ Text cutting fix — text اب نہیں cut ہوگا چاہے element
-    چھوٹا ہو
+نئے فیچرز (v2.0.4):
+  ✔ ★ CRITICAL FIX: 'QSizeF is not defined' error — Print
+    button پر مکمل crash کا حل! (v2.0.3 میں ایک import missing تھا)
+  ✔ Preview میں ruler شامل — اب sticker کا actual size
+    (mm + inches) دکھائی دیتا ہے، چھوٹے cm marks کے ساتھ
+    — آپ اپنا physical label screen پر رکھ کر verify کر سکتے ہیں
+  ✔ Dimension lines on label — sticker کے چاروں طرف
+    actual width/height دکھائی دیتا ہے (مثلاً "37.1 mm" اور "24.4 mm")
+  ✔ Import audit test — مستقبل میں ایسے bugs کی rule-prevention
+    کے لیے automated test
+
+پرانے فیچرز (v2.0.3):
+  ✔ setFullPage(True) — label printers کے لیے critical
+  ✔ 1.5×1 انچ preset — آپ کے label کا exact size
+  ✔ 6 inch-based presets
+  ✔ Test Print button
+  ✔ Printer info display with match indicator
+  ✔ Diagnostic info in error messages
+
+پرانے فیچرز (v2.0.2):
+  ✔ Custom Print Dialog (replaces QPrintDialog)
+  ✔ Quick Print button
+  ✔ Better error messages
+
+پرانے فیچرز (v2.0.1):
+  ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں
+  ✔ Arrow keys — 1mm normal, 0.1mm Shift کے ساتھ
+  ✔ Text cutting fix — Qt.TextDontClip flag
   ✔ PrinterResolution mode — label printers کے لیے بہتر
-    (Zebra, TSC, Xprinter, Godex)
-  ✔ Status bar messages — print submission کی تصدیق
 
 پرانے فیچرز (v2.0.0):
   ✔ بارکوڈ آن/آف ٹوگل
-  ✔ اسٹیکر ایڈیٹر — ہر عنصر drag/resize/rotate
-  ✔ فونٹ فیملی، سائز، bold، italic، color — ہر عنصر کے لیے
-  ✔ ملی میٹر اور انچ — دونوں اکائیاں
-  ✔ Save as PDF — ہمیشہ کام کرتا ہے
+  ✔ اسٹیکر ایڈیٹر — drag/resize/rotate
+  ✔ فونٹ فیملی، سائز، bold، italic، color
+  ✔ ملی میٹر اور انچ
+  ✔ Save as PDF
 
 پرانے فیچرز (v1.0):
-  ✔ EAN-13 بارکوڈ بناؤ
-  ✔ کمپنی نام، پروڈکٹ کوڈ، مینیوفیکچرنگ/ایکسپائری ڈیٹ، موبائل
-  ✔ A4 شیٹ پر مختلف سائز + کسٹم
-  ✔ لیبل پرنٹر موڈ (Zebra, TSC, Xprinter, Godex, Rongta)
+  ✔ EAN-13 بارکوڈ
+  ✔ کمپنی نام، پروڈکٹ کوڈ، Mfg/Exp ڈیٹ، موبائل
+  ✔ A4 شیٹ + لیبل پرنٹر موڈ
   ✔ CSV سے بلک امپورٹ
-  ✔ SQLite ہسٹری (تلاش + دوبارہ استعمال)
-  ✔ بولینگول (English + Urdu) انٹرفیس
+  ✔ SQLite ہسٹری
+  ✔ English + Urdu
 
 ------------------------------------------------------------
- 1. انسٹالیشن / INSTALLATION (Windows)
+ 1. انسٹالیشن / INSTALLATION
 ------------------------------------------------------------
 
-  طریقہ 1 — تیار شدہ انسٹالر (تجویز کردہ):
-  -----------------------------------------------------
+  طریقہ 1 — تیار شدہ انسٹالر:
     1. Setup.exe ڈبل کلک کریں
     2. Wizard کی ہدایات پر عمل کریں
-    3. ڈیسک ٹاپ یا Start Menu سے شارٹ کٹ استعمال کریں
 
   طریقہ 2 — GitHub سے ڈاؤن لوڈ:
-  -----------------------------------------------------
-    1. https://github.com/mohsinrasheed-Baga1/barcode-generator-pro
-    2. Releases سے تازہ ورژن کا Setup.exe ڈاؤن لوڈ کریں
-    3. انسٹال کر کے استعمال کریں
-
-  طریقہ 3 — خود EXE بنا کر:
-  -----------------------
-    1. Python 3.10+ انسٹال کریں (https://python.org)
-    2. Inno Setup 6 انسٹال کریں (https://jrsoftware.org)
-    3. build.bat چلائیں
+    https://github.com/mohsinrasheed-Baga1/barcode-generator-pro/releases
 
 ------------------------------------------------------------
- 2. بنیادی استعمال / BASIC USAGE
+ 2. پرنٹ کرنے کے تین طریقے / THREE WAYS TO PRINT
 ------------------------------------------------------------
 
-  ➤ سادہ طریقہ:
-    1. سائیڈ پینل میں تمام معلومات درج کریں
-    2. اگر بارکوڈ نہیں چاہیے تو "Include Barcode" کا check ہٹائیں
-    3. Quantity میں تعداد لکھیں
-    4. "Add to Sheet" بٹن دبائیں
-    5. "Print" یا "Save as PDF" بٹن دبائیں
+  ➤ 🖨 Print (Custom Dialog — تجویز کردہ):
+    1. "Print" بٹن دبائیں
+    2. ایک custom dialog کھلے گی:
+       • Printer dropdown سے پرنٹر منتخب کریں
+         (Default پرنٹر خود کار طور پر selected ہوگا)
+       • "⚙ Printer Properties" بٹن سے label size set کریں
+       • Copies: 1-999
+       • "Print" بٹن دبائیں
+    3. کامیابی پر status message + popup دکھائی دے گا
 
-  ➤ اگر پرنٹ پر سافٹ ویئر بند ہو جائے:
-    1. "Save as PDF" بٹن استعمال کریں — یہ ہمیشہ کام کرتا ہے
-    2. PDF کھول کر کسی بھی PDF ویوور (Acrobat, Edge, وغیرہ) سے
-       پرنٹ کریں
+  ➤ ⚡ Quick Print (فوری):
+    1. "Quick Print" بٹن دبائیں
+    2. Copies count پوچھی جائے گی
+    3. ڈیفالٹ پرنٹر پر فوراً پرنٹ بھیج دیا جائے گا
 
-------------------------------------------------------------
- 3. اسٹیکر لی آؤٹ ایڈیٹر / STICKER LAYOUT EDITOR
-------------------------------------------------------------
-
-  ہر اسٹیکر پر 7 عناصر ہوتے ہیں:
-    1. Company Name (کمپنی نام)
-    2. Product Name (پروڈکٹ نام)
-    3. Barcode (بارکوڈ تصویر)
-    4. Barcode Digits (بارکوڈ ہندسے)
-    5. Product Code (پروڈکٹ کوڈ)
-    6. Mfg/Exp Dates (تاریخیں)
-    7. Mobile (موبائل)
-
-  ہر عنصر کو کلک کر کے ایڈٹ کر سکتے ہیں:
-
-  ➤ حرکت دینا (Move):
-    1. "Edit Sticker Layout" بٹن دبائیں
-    2. جس عنصر کو move کرنا ہے اس پر کلک کریں
-    3. ماؤس سے drag کر کے نئی جگہ پر لے جائیں — جتنا چاہیں
-       move کر سکتے ہیں، کوئی restriction نہیں
-    4. یا arrow keys استعمال کریں:
-       ← ↑ → ↓ = 1 mm
-       Shift + arrow = 0.1 mm (fine control)
-
-  ➤ Delete key:
-    منتخب عنصر کو disable کرنے کے لیے Delete یا Backspace
-    دبائیں (element باقی رہے گا لیکن پرنٹ نہیں ہوگا)۔
-
-  ➤ سائز تبدیل کرنا (Resize):
-    1. عنصر منتخب کریں
-    2. دائیں پینل میں Width / Height بدلیں (mm یا in)
-
-  ➤ گھمانا (Rotate):
-    1. عنصر منتخب کریں
-    2. Rotation فیلڈ میں 0 سے 360 ڈگری تک value لکھیں
-    3. یا Quick rotate بٹن (0°, 90°, -90°, 180°) استعمال کریں
-
-  ➤ عنصر آن/آف کرنا (Enable/Disable):
-    1. عنصر منتخب کریں
-    2. "Enabled" checkbox آن/آف کریں
-    3. یا مین ونڈو میں "Include Barcode" checkbox سے بارکوڈ
-       آن/آف کریں
-
-  ➤ فونٹ بدلنا:
-    1. عنصر منتخب کریں
-    2. Family dropdown سے کوئی بھی فونٹ چنیں (Arial, Times
-       New Roman, Calibri, وغیرہ)
-    3. Size (pt) بدلیں
-    4. Bold / Italic checkbox استعمال کریں
-    5. "Text Color" بٹن سے رنگ چنیں
-
-  ➤ Alignment (Left/Center/Right):
-    1. عنصر منتخب کریں
-    2. Align بٹن (Left / Center / Right) استعمال کریں
-
-  ➤ زوم (Zoom In/Out):
-    1. ایڈیٹر میں Zoom In / Zoom Out / Fit بٹن
-    2. Ctrl + ماؤس ویل سے بھی زوم
-
-  ➤ Reset:
-    1. "Reset to Default" بٹن سے تمام عناصر default positions پر
-
-  تمام تبدیلیاں خودکار محفوظ ہوتی ہیں۔
+  ➤ 📄 Save as PDF (Backup):
+    1. "Save as PDF" بٹن دبائیں
+    2. PDF فائل محفوظ کریں
+    3. Adobe Acrobat / Microsoft Edge میں کھولیں
+    4. **Important**: Print dialog میں "Actual Size" select کریں
+       (NOT Fit یا Shrink to fit — ورنہ بارکوڈ غلط سائز میں نکلے گا)
+    5. Print دبائیں
 
 ------------------------------------------------------------
- 4. اکائیاں / UNITS (mm / in)
+ 3. اگر پرنٹ نہ نکلے / TROUBLESHOOTING
+------------------------------------------------------------
+
+  مسئلہ: "Could not open the print dialog" error
+  حل:    "Print" بٹن (custom dialog) استعمال کریں — یہ QPrintDialog
+         کے بجائے ہماری اپنی dialog ہے جو reliable ہے۔
+         اگر یہ بھی fail ہو تو "Quick Print" try کریں۔
+         آخر میں "Save as PDF" ہمیشہ کام کرتا ہے۔
+
+  مسئلہ: پرنٹ غلط سائز میں نکل رہا ہے
+  حل:    "⚙ Printer Properties" بٹن دبائیں اور label size وہاں
+         set کریں جو سافٹ ویئر میں selected ہے۔
+
+  مسئلہ: PDF پرنٹ غلط نکل رہا ہے
+  حل:    PDF viewer (Acrobat / Edge) کے Print dialog میں
+         "Page Sizing" → "Actual size" select کریں۔
+         "Fit" یا "Shrink to fit" select نہ کریں۔
+
+  مسئلہ: بارکوڈ اسکین نہیں ہو رہا
+  حل:    پرنٹ کوالٹی کم از کم 300 DPI پر رکھیں۔
+
+  مسئلہ: کوئی پرنٹر نظر نہیں آ رہا
+  حل:    Windows Settings > Printers & scanners میں جا کر
+         کوئی پرنٹر "Set as default" کریں۔ یا "Microsoft Print
+         to PDF" بھی کام کرتا ہے۔
+
+------------------------------------------------------------
+ 4. اسٹیکر ایڈیٹر / STICKER LAYOUT EDITOR
+------------------------------------------------------------
+
+  "✏ Edit Sticker Layout" بٹن دبائیں۔ ہر عنصر کو:
+  - ماؤس سے drag کر کے move کریں (جتنا چاہیں)
+  - Arrow keys سے nudge کریں (1mm / Shift+arrow = 0.1mm)
+  - Delete key سے disable کریں
+  - Width/Height fields سے resize کریں
+  - Rotation 0-360°
+  - Font family, size, bold, italic, color, alignment
+
+------------------------------------------------------------
+ 5. اکائیاں / UNITS (mm / in)
 ------------------------------------------------------------
 
   Settings میں "Measurement Units" سے mm یا in منتخب کریں۔
-  تمام سائز فیلڈز اسی اکائی میں دکھائی دیں گی۔ toggle پر values
-  خودکار convert ہو جائیں گی۔
-
-  Examples:
-    50 mm = 1.969 in
-    2 in  = 50.80 mm
 
 ------------------------------------------------------------
- 5. پرنٹنگ / PRINTING
+ 6. ڈیٹا / DATA
 ------------------------------------------------------------
 
-  تین طریقے:
-
-  ➤ Print (Direct):
-    1. "Print" بٹن دبائیں
-    2. پرنٹ ڈائیلاگ میں اپنا پرنٹر منتخب کریں
-    3. Properties میں پیپر/لیبل سائز وہی رکھیں جو سافٹ ویئر میں
-       منتخب کیا ہے
-    4. Print دبائیں
-
-  ➤ Preview:
-    1. "Preview" بٹن دبائیں
-    2. پرنٹ پریویو ڈائیلاگ کھلے گا
-    3. ضرورت پڑنے پر پرنٹر تبدیل کریں
-    4. Print دبائیں
-
-  ➤ Save as PDF (ہمیشہ کام کرتا ہے):
-    1. "Save as PDF" بٹن دبائیں
-    2. فائل کا نام اور جگہ چنیں
-    3. Save دبائیں
-    4. PDF کو Acrobat, Edge, یا کسی بھی PDF viewer سے پرنٹ کریں
-
-------------------------------------------------------------
- 6. CSV بلک امپورٹ / BULK CSV IMPORT
-------------------------------------------------------------
-
-  Header (پہلی سطر):
-    company_name,product_name,product_code,barcode,
-                  mfg_date,exp_date,mobile
-
-  barcode کالم لازمی نہیں۔ اگر خالی ہے اور "Include Barcode"
-  آن ہے تو سافٹ ویئر خودکار checksum شامل کرے گا۔
-
-  "Save Template" بٹن سے sample CSV فائل ڈاؤن لوڈ کریں۔
-
-------------------------------------------------------------
- 7. لیبل پرنٹر موڈ (بارکوڈ پرنٹر)
-------------------------------------------------------------
-
-  Settings > Sheet Layout ٹیب میں Print Mode منتخب کریں:
-    📄 Sheet Printer — A4 multi-sticker
-    🖨 Label Printer  — direct (Zebra, TSC, Xprinter, Godex, Rongta)
-
-  لیبل موڈ کے تیار سائز:
-    50×30, 40×30, 40×25, 60×40, 70×40, 100×50, 80×60 mm
-  یا مکمل کسٹم سائز۔
-
-------------------------------------------------------------
- 8. ڈیٹا کی محفوظتی / DATA & PRIVACY
-------------------------------------------------------------
-
-  ڈیٹا SQLite ڈیٹابیس میں محفوظ ہوتا ہے:
+  ڈیٹا SQLite ڈیٹابیس میں محفوظ ہے:
     %APPDATA%\BarcodeGenerator\barcodes.db
-
   Settings > Data ٹیب سے history صاف کر سکتے ہیں۔
-
-------------------------------------------------------------
- 9. پریشانی؟ / TROUBLESHOOTING
-------------------------------------------------------------
-
-  مسئلہ: پرنٹ/پریویو پر سافٹ ویئر بند ہو جاتا ہے۔
-  حل:    "Save as PDF" استعمال کریں — یہ ہمیشہ کام کرتا ہے۔
-
-  مسئلہ: پرنٹ غلط سائز میں نکل رہا ہے۔
-  حل:    پرنٹر ڈرائیور کے Properties میں پیپر/لیبل سائز وہی
-         رکھیں جو سافٹ ویئر میں منتخب کیا ہے۔
-
-  مسئلہ: بارکوڈ اسکین نہیں ہو رہا۔
-  حل:    پرنٹ کوالٹی بڑھائیں۔ بارکوڈ کم از کم 300 DPI
-         سے پرنٹ کرنے چاہئیں۔
-
-  مسئلہ: فونٹ درست نہیں دکھ رہا۔
-  حل:    Windows میں فونٹ انسٹال ہونا ضروری ہے۔ Arial،
-         Times New Roman عام طور پر موجود ہوتے ہیں۔
