@@ -1,20 +1,31 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.3
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.4
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.0.3):
-  ✔ setFullPage(True) — ★ CRITICAL FIX — اب Qt خود اپنے margins
-    شامل نہیں کرتا، پورا label استعمال ہوتا ہے
-  ✔ 1.5×1 انچ preset — آپ کے label کا exact سائز (38.1×25.4 mm)
-  ✔ 6 inch-based presets شامل کیے:
-    1.5×1, 2×1, 3×1, 3×2, 4×2, 4×6 inches
-  ✔ Test Print button — Print Setup dialog میں 1 label test
-    print کرنے کا button شامل
-  ✔ Printer info display — selected printer کا actual page size
-    دکھاتا ہے، match ہونے پر ✓، مختلف ہونے پر ✗ warning
-  ✔ Diagnostic info in errors — printer name, page size, DPI
-    سب error message میں دکھاتا ہے
+نئے فیچرز (v2.0.4):
+  ✔ ★ CRITICAL FIX: 'QSizeF is not defined' error — Print
+    button پر مکمل crash کا حل! (v2.0.3 میں ایک import missing تھا)
+  ✔ Preview میں ruler شامل — اب sticker کا actual size
+    (mm + inches) دکھائی دیتا ہے، چھوٹے cm marks کے ساتھ
+    — آپ اپنا physical label screen پر رکھ کر verify کر سکتے ہیں
+  ✔ Dimension lines on label — sticker کے چاروں طرف
+    actual width/height دکھائی دیتا ہے (مثلاً "37.1 mm" اور "24.4 mm")
+  ✔ Import audit test — مستقبل میں ایسے bugs کی rule-prevention
+    کے لیے automated test
+
+پرانے فیچرز (v2.0.3):
+  ✔ setFullPage(True) — label printers کے لیے critical
+  ✔ 1.5×1 انچ preset — آپ کے label کا exact size
+  ✔ 6 inch-based presets
+  ✔ Test Print button
+  ✔ Printer info display with match indicator
+  ✔ Diagnostic info in error messages
+
+پرانے فیچرز (v2.0.2):
+  ✔ Custom Print Dialog (replaces QPrintDialog)
+  ✔ Quick Print button
+  ✔ Better error messages
 
 پرانے فیچرز (v2.0.1):
   ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں

@@ -1,12 +1,12 @@
 """
-Main window for the Barcode Generator (v2.0.2).
+Main window for the Barcode Generator (v2.0.4).
 """
 import os
 import json
 import traceback
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import Qt, QSize, QRectF, QDate, QTimer
+from PyQt5.QtCore import Qt, QSize, QSizeF, QRectF, QRect, QDate, QTimer
 from PyQt5.QtGui import (
     QPixmap, QImage, QPainter, QColor, QFont, QPen,
     QIcon, QStandardItemModel, QStandardItem, QPalette, QPageSize
@@ -42,7 +42,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 
 
 class MainWindow(QMainWindow):
