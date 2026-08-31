@@ -1,10 +1,10 @@
 ; ============================================================
-;  Barcode Generator Pro v2.0.4 - Inno Setup Script
+;  Barcode Generator Pro v2.1.0 - Inno Setup Script
 ;  Produces BarcodeGeneratorPro_Setup.exe
 ; ============================================================
 
 #define MyAppName "Barcode Generator Pro"
-#define MyAppVersion "2.0.4"
+#define MyAppVersion "2.1.0"
 #define MyAppPublisher "Barcode Generator"
 #define MyAppExeName "BarcodeGeneratorPro.exe"
 #define MyAppAssocName "Barcode Generator Pro File"

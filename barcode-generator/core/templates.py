@@ -33,6 +33,14 @@ class StickerElement:
     italic: bool = False
     align: str = 'center'
     color: str = '#000000'
+    # For logo elements only — base64-encoded image data + format
+    image_data: str = ''   # base64-encoded PNG/JPEG, empty for non-logo elements
+    image_format: str = 'PNG'  # 'PNG' or 'JPEG'
+    # How to fit the image in the element rect:
+    #   'contain' — entire image visible, may have padding
+    #   'cover'   — fill rect completely, may crop
+    #   'stretch' — fill rect, may distort
+    image_fit: str = 'contain'
 
 
 @dataclass
@@ -52,7 +60,8 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_product_code: bool = True,
                      include_dates: bool = True,
                      include_mobile: bool = True,
-                     include_company: bool = True) -> StickerTemplate:
+                     include_company: bool = True,
+                     include_logo: bool = False) -> StickerTemplate:
     """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
     company_pt = max(4.0, min(14.0, base_h * 0.18))
@@ -65,6 +74,20 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
 
     elements: List[StickerElement] = []
     y = 0.5
+
+    # Logo at top-left corner (small, 8x8mm by default)
+    if include_logo:
+        logo_size = min(8.0, base_h * 0.4, sticker_w_mm * 0.25)
+        elements.append(StickerElement(
+            id='logo',
+            label='Logo / لوگو',
+            enabled=True,
+            x_mm=0.5, y_mm=0.5,
+            w_mm=logo_size, h_mm=logo_size,
+            image_data='',  # empty — user will load an image
+            image_format='PNG',
+            image_fit='contain',
+        ))
 
     if include_company:
         elements.append(StickerElement(
