@@ -8,16 +8,17 @@ from datetime import datetime, timedelta
 
 from PyQt5.QtCore import Qt, QSize, QSizeF, QRectF, QRect, QDate, QTimer
 from PyQt5.QtGui import (
-    QPixmap, QImage, QPainter, QColor, QFont, QPen,
-    QIcon, QStandardItemModel, QStandardItem, QPalette, QPageSize
+    QPixmap, QImage, QPainter, QColor, QFont, QPen, QFontDatabase,
+    QIcon, QStandardItemModel, QStandardItem, QPalette, QPageSize, QTransform
 )
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout,
     QLabel, QLineEdit, QPlainTextEdit, QPushButton, QComboBox, QSpinBox,
-    QDateEdit, QCheckBox, QTableView, QHeaderView, QTabWidget, QSplitter,
-    QMessageBox, QFileDialog, QDialog, QGroupBox,
+    QDoubleSpinBox, QDateEdit, QCheckBox, QTableView, QHeaderView, QTabWidget,
+    QSplitter, QMessageBox, QFileDialog, QDialog, QGroupBox,
     QScrollArea, QFrame, QSizePolicy, QApplication, QStatusBar,
-    QInputDialog, QDialogButtonBox, QListWidget, QListWidgetItem
+    QInputDialog, QDialogButtonBox, QListWidget, QListWidgetItem,
+    QStackedWidget, QColorDialog
 )
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintDialog, QPrinterInfo
 
@@ -42,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.1.0"
 
 
 class MainWindow(QMainWindow):
@@ -213,20 +214,81 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(layout_box)
 
-        # Print buttons — three options
+        # Logo upload button
+        logo_row = QHBoxLayout()
+        self.logo_btn = QPushButton("🖼 Add Logo / لوگو شامل کریں")
+        self.logo_btn.setStyleSheet(
+            "background: #f0f4fa; color: #1a4d8f; padding: 8px; "
+            "border: 2px dashed #1a4d8f; font-weight: bold;"
+        )
+        self.logo_btn.clicked.connect(self.on_logo_clicked)
+        logo_row.addWidget(self.logo_btn)
+
+        self.remove_logo_btn = QPushButton("✖ Remove Logo")
+        self.remove_logo_btn.clicked.connect(self.on_remove_logo_clicked)
+        logo_row.addWidget(self.remove_logo_btn)
+        left_layout.addLayout(logo_row)
+
+        # Edit mode toggle button — toggles inline editor in preview area
+        self.edit_mode_btn = QPushButton("✏ Edit Layout (inline) / ایڈٹ موڈ")
+        self.edit_mode_btn.setCheckable(True)
+        self.edit_mode_btn.setStyleSheet(
+            "padding: 8px; font-weight: bold; "
+            "background: #e8eaf6; color: #283593; border: 1px solid #283593;"
+        )
+        self.edit_mode_btn.toggled.connect(self.on_edit_mode_toggled)
+        left_layout.addWidget(self.edit_mode_btn)
+
+        # Print buttons — three options (Print button is prominent)
         print_row = QHBoxLayout()
-        self.print_btn = QPushButton("🖨 Print\nپرنٹ")
-        self.print_btn.setStyleSheet("background: #1a4d8f; color: white; padding: 10px; font-weight: bold;")
+        # Main Print button — prominent orange/red gradient
+        self.print_btn = QPushButton("🖨  PRINT\nپرنٹ")
+        self.print_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ff7043, stop:1 #d84315);
+                color: white; padding: 14px 18px;
+                font-size: 14px; font-weight: bold;
+                border: none; border-radius: 6px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ff8a65, stop:1 #e64a19);
+            }
+            QPushButton:pressed {
+                background: #bf360c;
+            }
+        """)
         self.print_btn.clicked.connect(self.on_print_clicked)
         print_row.addWidget(self.print_btn)
 
-        self.quick_print_btn = QPushButton("⚡ Quick Print\nفوری پرنٹ")
-        self.quick_print_btn.setStyleSheet("background: #2e7d32; color: white; padding: 10px;")
+        # Quick Print — secondary green
+        self.quick_print_btn = QPushButton("⚡ Quick\nفوری")
+        self.quick_print_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #66bb6a, stop:1 #2e7d32);
+                color: white; padding: 14px;
+                font-weight: bold; border: none; border-radius: 6px;
+            }
+            QPushButton:hover { background: #43a047; }
+            QPushButton:pressed { background: #1b5e20; }
+        """)
         self.quick_print_btn.clicked.connect(self.on_quick_print_clicked)
         print_row.addWidget(self.quick_print_btn)
 
-        self.pdf_btn = QPushButton("📄 Save as PDF\nPDF محفوظ کریں")
-        self.pdf_btn.setStyleSheet("background: #b85c00; color: white; padding: 10px;")
+        # PDF — tertiary amber
+        self.pdf_btn = QPushButton("📄 PDF\nPDF")
+        self.pdf_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffb74d, stop:1 #e68900);
+                color: white; padding: 14px;
+                font-weight: bold; border: none; border-radius: 6px;
+            }
+            QPushButton:hover { background: #f57c00; }
+            QPushButton:pressed { background: #b85c00; }
+        """)
         self.pdf_btn.clicked.connect(self.on_save_pdf_clicked)
         print_row.addWidget(self.pdf_btn)
         left_layout.addLayout(print_row)
@@ -250,25 +312,70 @@ class MainWindow(QMainWindow):
 
         left_layout.addStretch(1)
 
-        # ---- right: preview ----
+        # ---- right: preview + (optional) inline editor ----
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(4)
 
-        preview_label = QLabel("Sheet Preview / شیٹ پریویو")
-        preview_label.setStyleSheet("font-size: 13px; font-weight: bold;")
-        right_layout.addWidget(preview_label)
+        # Top label — preview mode or edit mode
+        self.preview_label_title = QLabel("Sheet Preview / شیٹ پریویو")
+        self.preview_label_title.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #1a4d8f; padding: 4px;"
+        )
+        right_layout.addWidget(self.preview_label_title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setAlignment(Qt.AlignCenter)
-        scroll.setBackgroundRole(QPalette.Mid)
+        # Zoom controls row
+        zoom_row = QHBoxLayout()
+        zoom_row.setContentsMargins(0, 0, 0, 0)
+        self.zoom_in_btn = QPushButton("🔍+")
+        self.zoom_in_btn.setMaximumWidth(40)
+        self.zoom_in_btn.setToolTip("Zoom In")
+        self.zoom_in_btn.clicked.connect(self.on_zoom_in)
+        zoom_row.addWidget(self.zoom_in_btn)
+        self.zoom_out_btn = QPushButton("🔍−")
+        self.zoom_out_btn.setMaximumWidth(40)
+        self.zoom_out_btn.setToolTip("Zoom Out")
+        self.zoom_out_btn.clicked.connect(self.on_zoom_out)
+        zoom_row.addWidget(self.zoom_out_btn)
+        self.zoom_actual_btn = QPushButton("1:1 (Actual Size)")
+        self.zoom_actual_btn.setToolTip("Show at actual physical size (1mm screen = 1mm paper)")
+        self.zoom_actual_btn.clicked.connect(self.on_zoom_actual)
+        zoom_row.addWidget(self.zoom_actual_btn)
+        self.zoom_fit_btn = QPushButton("Fit")
+        self.zoom_fit_btn.setMaximumWidth(60)
+        self.zoom_fit_btn.setToolTip("Fit to window")
+        self.zoom_fit_btn.clicked.connect(self.on_zoom_fit)
+        zoom_row.addWidget(self.zoom_fit_btn)
+        zoom_row.addStretch(1)
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setStyleSheet("color: #555; padding: 4px;")
+        zoom_row.addWidget(self.zoom_label)
+        right_layout.addLayout(zoom_row)
+
+        # Stacked widget: index 0 = preview (QLabel), index 1 = editor (QGraphicsView)
+        self.preview_stack = QStackedWidget()
+
+        # ----- Index 0: Static preview (QLabel in scroll area) -----
+        self.preview_scroll = QScrollArea()
+        self.preview_scroll.setWidgetResizable(True)
+        self.preview_scroll.setAlignment(Qt.AlignCenter)
+        self.preview_scroll.setBackgroundRole(QPalette.Mid)
         self.preview_label = QLabel()
         self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setMinimumSize(540, 760)
+        self.preview_label.setMinimumSize(200, 200)
         self.preview_label.setStyleSheet("background: #999;")
-        scroll.setWidget(self.preview_label)
-        right_layout.addWidget(scroll, 1)
+        self.preview_scroll.setWidget(self.preview_label)
+        self.preview_stack.addWidget(self.preview_scroll)
+
+        # ----- Index 1: Inline editor (QGraphicsView) -----
+        from ui.sticker_editor import StickerScene
+        self.editor_scene = None  # created lazily in on_edit_mode_toggled
+        self.editor_view = None
+        self._editor_initialized = False
+        # Will create editor scene when user first enables edit mode
+
+        right_layout.addWidget(self.preview_stack, 1)
 
         self.count_label = QLabel("0 stickers in sheet")
         self.count_label.setStyleSheet("padding: 4px; color: #333;")
@@ -278,7 +385,7 @@ class MainWindow(QMainWindow):
         self.items_model.setHorizontalHeaderLabels(["#", "Barcode", "Product", "Qty"])
         self.items_table = QTableView()
         self.items_table.setModel(self.items_model)
-        self.items_table.setMaximumHeight(160)
+        self.items_table.setMaximumHeight(120)
         self.items_table.setSelectionBehavior(QTableView.SelectRows)
         self.items_table.setEditTriggers(QTableView.NoEditTriggers)
         self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -293,6 +400,108 @@ class MainWindow(QMainWindow):
         self.del_all_btn.clicked.connect(self.on_clear_clicked)
         del_row.addWidget(self.del_all_btn)
         right_layout.addLayout(del_row)
+
+        # ----- Properties panel (shown only when edit mode is on) -----
+        self.props_panel = QGroupBox("Element Properties / عنصر کی خصوصیات")
+        self.props_panel.setVisible(False)
+        pp_layout = QVBoxLayout(self.props_panel)
+
+        # Element selector
+        from PyQt5.QtWidgets import QFormLayout as QFL
+        elem_form = QFL()
+        self.elem_combo = QComboBox()
+        self.elem_combo.currentIndexChanged.connect(self.on_elem_combo_changed)
+        elem_form.addRow("Element:", self.elem_combo)
+
+        # Enabled checkbox
+        self.elem_enabled_chk = QCheckBox("Enabled / فعال")
+        self.elem_enabled_chk.toggled.connect(self.on_elem_enabled_toggled)
+        elem_form.addRow("", self.elem_enabled_chk)
+
+        # Position + size
+        unit_sym = self.unit.symbol
+        self.elem_x = QDoubleSpinBox()
+        self.elem_x.setRange(-100, 500); self.elem_x.setDecimals(3); self.elem_x.setSuffix(f" {unit_sym}")
+        self.elem_x.valueChanged.connect(self.on_elem_geom_changed)
+        elem_form.addRow("X (left):", self.elem_x)
+        self.elem_y = QDoubleSpinBox()
+        self.elem_y.setRange(-100, 500); self.elem_y.setDecimals(3); self.elem_y.setSuffix(f" {unit_sym}")
+        self.elem_y.valueChanged.connect(self.on_elem_geom_changed)
+        elem_form.addRow("Y (top):", self.elem_y)
+        self.elem_w = QDoubleSpinBox()
+        self.elem_w.setRange(0.5, 500); self.elem_w.setDecimals(3); self.elem_w.setSuffix(f" {unit_sym}")
+        self.elem_w.valueChanged.connect(self.on_elem_geom_changed)
+        elem_form.addRow("Width:", self.elem_w)
+        self.elem_h = QDoubleSpinBox()
+        self.elem_h.setRange(0.5, 500); self.elem_h.setDecimals(3); self.elem_h.setSuffix(f" {unit_sym}")
+        self.elem_h.valueChanged.connect(self.on_elem_geom_changed)
+        elem_form.addRow("Height:", self.elem_h)
+        self.elem_rot = QDoubleSpinBox()
+        self.elem_rot.setRange(-360, 360); self.elem_rot.setDecimals(1); self.elem_rot.setSuffix(" °")
+        self.elem_rot.valueChanged.connect(self.on_elem_geom_changed)
+        elem_form.addRow("Rotation:", self.elem_rot)
+
+        # Quick rotate buttons
+        qr_row = QHBoxLayout()
+        for ang, lbl in [(-90, "↺90°"), (0, "0°"), (90, "↻90°"), (180, "180°")]:
+            b = QPushButton(lbl)
+            b.setMaximumWidth(50)
+            b.clicked.connect(lambda _, a=ang: self.elem_rot.setValue(a))
+            qr_row.addWidget(b)
+        qr_row.addStretch(1)
+        elem_form.addRow("Quick rotate:", qr_row)
+
+        # Align buttons
+        al_row = QHBoxLayout()
+        for code, lbl, icon in [('left', 'Left', '⬅'), ('center', 'Center', '↔'), ('right', 'Right', '➡')]:
+            b = QPushButton(f"{icon} {lbl}")
+            b.clicked.connect(lambda _, c=code: self.on_elem_align_clicked(c))
+            al_row.addWidget(b)
+        al_row.addStretch(1)
+        elem_form.addRow("Align:", al_row)
+
+        pp_layout.addLayout(elem_form)
+
+        # Font section (shown only for text elements)
+        self.font_box = QGroupBox("Font / فونٹ")
+        fb_layout = QFL(self.font_box)
+        self.font_family = QComboBox()
+        self.font_family.addItems(QFontDatabase().families())
+        self.font_family.currentTextChanged.connect(self.on_elem_font_changed)
+        fb_layout.addRow("Family:", self.font_family)
+        self.font_size_spin = QDoubleSpinBox()
+        self.font_size_spin.setRange(2, 72); self.font_size_spin.setDecimals(1); self.font_size_spin.setSuffix(" pt")
+        self.font_size_spin.valueChanged.connect(self.on_elem_font_changed)
+        fb_layout.addRow("Size:", self.font_size_spin)
+        ff_row = QHBoxLayout()
+        self.bold_chk = QCheckBox("Bold")
+        self.bold_chk.toggled.connect(self.on_elem_font_changed)
+        ff_row.addWidget(self.bold_chk)
+        self.italic_chk = QCheckBox("Italic")
+        self.italic_chk.toggled.connect(self.on_elem_font_changed)
+        ff_row.addWidget(self.italic_chk)
+        ff_row.addStretch(1)
+        fb_layout.addRow("Style:", ff_row)
+        self.color_btn = QPushButton("🎨 Text Color")
+        self.color_btn.clicked.connect(self.on_elem_color_clicked)
+        fb_layout.addRow("Color:", self.color_btn)
+        pp_layout.addWidget(self.font_box)
+
+        # Image section (shown only for logo elements)
+        self.image_box = QGroupBox("Image / تصویر")
+        ib_layout = QFL(self.image_box)
+        self.image_fit_combo = QComboBox()
+        self.image_fit_combo.addItem("Contain (full image, may pad)", "contain")
+        self.image_fit_combo.addItem("Cover (fill, may crop)", "cover")
+        self.image_fit_combo.addItem("Stretch (fill, may distort)", "stretch")
+        self.image_fit_combo.currentIndexChanged.connect(self.on_elem_image_fit_changed)
+        ib_layout.addRow("Fit:", self.image_fit_combo)
+        self.load_image_btn = QPushButton("📂 Load Image")
+        self.load_image_btn.clicked.connect(self.on_elem_load_image)
+        ib_layout.addRow("", self.load_image_btn)
+        pp_layout.addWidget(self.image_box)
+
+        right_layout.addWidget(self.props_panel)
 
         root.addWidget(left, 0)
         root.addWidget(right, 1)
@@ -472,8 +681,16 @@ class MainWindow(QMainWindow):
             return
         lay = self._current_layout()
         try:
-            pix = render_preview(lay, self.current_items, self.template, dpi=120)
-            self.preview_label.setPixmap(pix)
+            # Render at higher DPI for crisp preview (we'll zoom programmatically)
+            # 200 DPI gives good balance between quality and size
+            pix = render_preview(lay, self.current_items, self.template, dpi=200)
+            self._preview_base_pixmap = pix
+            # Apply current zoom (default 1.0)
+            if not hasattr(self, '_preview_zoom'):
+                self._preview_zoom = 1.0
+            # Display at actual screen size — the preview_label will scale
+            # automatically based on its sizeHint. We use scaled pixmap.
+            self._apply_preview_zoom()
         except Exception as e:
             self.preview_label.setText(f"Preview error:\n{e}")
 
@@ -768,33 +985,468 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
 
-    # ----------------------------------------------- sticker editor
+    # ----------------------------------------------- sticker editor (INLINE)
     def on_edit_layout_clicked(self):
-        if self.current_items:
-            sample_data = self.current_items[0]
+        """Legacy — now just toggles the inline edit mode."""
+        self.edit_mode_btn.toggle()
+
+    def on_edit_mode_toggled(self, checked: bool):
+        """Toggle inline editor in the preview area."""
+        if checked:
+            # Switching to edit mode
+            self.preview_label_title.setText("✏ Edit Mode — Click an element, drag to move / ایڈٹ موڈ")
+            self.preview_label_title.setStyleSheet(
+                "font-size: 13px; font-weight: bold; color: #b85c00; padding: 4px;"
+            )
+            self.edit_mode_btn.setStyleSheet(
+                "padding: 8px; font-weight: bold; "
+                "background: #ff7043; color: white; border: 1px solid #d84315;"
+            )
+            self.edit_mode_btn.setText("✓ Done Editing / مکمل ہو گیا")
+            # Initialize editor if not done yet
+            self._init_inline_editor()
+            self.props_panel.setVisible(True)
+            self.preview_stack.setCurrentIndex(1 if self.editor_view else 0)
+            self._refresh_editor()
+            self._populate_elem_combo()
         else:
-            sample_data = {
-                'company_name': self.company_edit.text() or 'Company Name',
-                'product_name': self.product_edit.text() or 'Product Name',
-                'product_code': self.code_edit.text() or 'CODE-001',
-                'barcode': self.barcode_edit.text() or '501234567890',
-                'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
-                'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
-                'mobile': self.mobile_edit.text() or '+92 300 1234567',
-            }
-        lay = self._current_layout()
-        self.template.sticker_w_mm = lay.sticker_w_mm
-        self.template.sticker_h_mm = lay.sticker_h_mm
-        dlg = StickerEditorDialog(self.template, sample_data,
-                                    lay.sticker_w_mm, lay.sticker_h_mm,
-                                    unit_code=self.unit.code,
-                                    parent=self)
-        if dlg.exec_() == QDialog.Accepted:
-            self.template = dlg.template
+            # Switching back to preview mode
+            self.preview_label_title.setText("Sheet Preview / شیٹ پریویو")
+            self.preview_label_title.setStyleSheet(
+                "font-size: 13px; font-weight: bold; color: #1a4d8f; padding: 4px;"
+            )
+            self.edit_mode_btn.setStyleSheet(
+                "padding: 8px; font-weight: bold; "
+                "background: #e8eaf6; color: #283593; border: 1px solid #283593;"
+            )
+            self.edit_mode_btn.setText("✏ Edit Layout (inline) / ایڈٹ موڈ")
+            self.props_panel.setVisible(False)
+            self.preview_stack.setCurrentIndex(0)
+            # Save the template
             self.db.set_setting('sticker_template_json',
                                 template_to_json(self.template))
             self._refresh_preview()
             self._update_statusbar()
+
+    def _init_inline_editor(self):
+        """Lazily initialize the QGraphicsScene + QGraphicsView for inline editor."""
+        if self._editor_initialized:
+            return
+        from ui.sticker_editor import StickerScene, ElementItem
+        from PyQt5.QtWidgets import QGraphicsView
+        # Build sample data from current inputs
+        if self.current_items:
+            sample_data = self.current_items[0]
+        else:
+            sample_data = self._build_sample_data()
+        lay = self._current_layout()
+        self.template.sticker_w_mm = lay.sticker_w_mm
+        self.template.sticker_h_mm = lay.sticker_h_mm
+        self.editor_scene = StickerScene(self.template, sample_data)
+        self.editor_view = QGraphicsView(self.editor_scene)
+        self.editor_view.setRenderHint(QPainter.Antialiasing, True)
+        self.editor_view.setBackgroundBrush(QColor('#d0d0d0'))
+        self.editor_view.setMinimumSize(400, 300)
+        # Connect signals
+        self.editor_scene.element_selection_changed.connect(self._on_editor_selection_changed)
+        self.editor_scene.element_changed.connect(self._on_editor_element_changed)
+        self.preview_stack.addWidget(self.editor_view)
+        self._editor_initialized = True
+
+    def _build_sample_data(self):
+        return {
+            'company_name': self.company_edit.text() or 'Company Name',
+            'product_name': self.product_edit.text() or 'Product Name',
+            'product_code': self.code_edit.text() or 'CODE-001',
+            'barcode': self.barcode_edit.text() or '501234567890',
+            'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
+            'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
+            'mobile': self.mobile_edit.text() or '+92 300 1234567',
+        }
+
+    def _refresh_editor(self):
+        """Rebuild the editor scene when template/layout changes."""
+        if not self.editor_scene:
+            return
+        # Update sample data from current inputs
+        if self.current_items:
+            self.editor_scene.sample_data = self.current_items[0]
+        else:
+            self.editor_scene.sample_data = self._build_sample_data()
+        lay = self._current_layout()
+        self.template.sticker_w_mm = lay.sticker_w_mm
+        self.template.sticker_h_mm = lay.sticker_h_mm
+        self.editor_scene.template = self.template
+        self.editor_scene.refresh()
+        # Fit the view to the scene
+        QTimer.singleShot(20, self._fit_editor_view)
+
+    def _fit_editor_view(self):
+        if not self.editor_view:
+            return
+        # Use a reasonable scale that makes the sticker visible but not too big
+        lay = self._current_layout()
+        # Target ~250-400px width for sticker
+        target_w = max(250, min(450, self.editor_view.viewport().width() - 40))
+        scale = target_w / (lay.sticker_w_mm * (1.0 / self.editor_scene.mm_per_px))
+        self.editor_view.setTransform(QTransform.fromScale(scale, scale))
+
+    def _populate_elem_combo(self):
+        """Populate the element dropdown in the properties panel."""
+        self.elem_combo.blockSignals(True)
+        self.elem_combo.clear()
+        for e in self.template.elements:
+            label = e.label
+            if not e.enabled:
+                label = f"[OFF] {label}"
+            self.elem_combo.addItem(label, id(e))
+        self.elem_combo.blockSignals(False)
+        # Select first element
+        if self.template.elements:
+            self.elem_combo.setCurrentIndex(0)
+            self._show_elem_props(self.template.elements[0])
+
+    def _selected_elem(self):
+        """Return the currently selected element from the combo (or None)."""
+        if not hasattr(self, 'elem_combo'):
+            return None
+        idx = self.elem_combo.currentIndex()
+        if idx < 0 or idx >= len(self.template.elements):
+            return None
+        return self.template.elements[idx]
+
+    def _on_editor_selection_changed(self, element):
+        """Called when an element is clicked in the graphics scene."""
+        # Find the index in the combo
+        for i, e in enumerate(self.template.elements):
+            if e is element:
+                self.elem_combo.blockSignals(True)
+                self.elem_combo.setCurrentIndex(i)
+                self.elem_combo.blockSignals(False)
+                break
+        self._show_elem_props(element)
+
+    def _on_editor_element_changed(self, element):
+        """Called when an element is dragged in the graphics scene."""
+        # Update the X/Y fields
+        if not hasattr(self, 'elem_x'):
+            return
+        for w in [self.elem_x, self.elem_y]:
+            w.blockSignals(True)
+        self.elem_x.setValue(self.unit.from_mm(element.x_mm))
+        self.elem_y.setValue(self.unit.from_mm(element.y_mm))
+        for w in [self.elem_x, self.elem_y]:
+            w.blockSignals(False)
+        # Refresh the editor scene
+        if self.editor_scene:
+            self.editor_scene.invalidate()
+        # Save template
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def _show_elem_props(self, element):
+        """Display the properties of the given element in the properties panel."""
+        if element is None:
+            return
+        for w in [self.elem_x, self.elem_y, self.elem_w, self.elem_h,
+                  self.elem_rot, self.font_size_spin, self.font_family,
+                  self.bold_chk, self.italic_chk, self.elem_enabled_chk,
+                  self.image_fit_combo]:
+            w.blockSignals(True)
+        self.elem_x.setValue(self.unit.from_mm(element.x_mm))
+        self.elem_y.setValue(self.unit.from_mm(element.y_mm))
+        self.elem_w.setValue(self.unit.from_mm(element.w_mm))
+        self.elem_h.setValue(self.unit.from_mm(element.h_mm))
+        self.elem_rot.setValue(element.rotation)
+        self.elem_enabled_chk.setChecked(element.enabled)
+        # Font properties (only for text elements)
+        is_text = element.id not in ('barcode', 'logo')
+        is_image = element.id == 'logo' or bool(element.image_data)
+        self.font_box.setVisible(is_text)
+        self.image_box.setVisible(is_image)
+        if is_text:
+            self.font_family.setCurrentText(element.font_family)
+            self.font_size_spin.setValue(element.font_size_pt)
+            self.bold_chk.setChecked(element.bold)
+            self.italic_chk.setChecked(element.italic)
+        if is_image:
+            for i in range(self.image_fit_combo.count()):
+                if self.image_fit_combo.itemData(i) == element.image_fit:
+                    self.image_fit_combo.setCurrentIndex(i)
+                    break
+        for w in [self.elem_x, self.elem_y, self.elem_w, self.elem_h,
+                  self.elem_rot, self.font_size_spin, self.font_family,
+                  self.bold_chk, self.italic_chk, self.elem_enabled_chk,
+                  self.image_fit_combo]:
+            w.blockSignals(False)
+
+    def on_elem_combo_changed(self, idx: int):
+        """Called when the element dropdown selection changes."""
+        e = self._selected_elem()
+        if e is None:
+            return
+        self._show_elem_props(e)
+        # Also select it in the graphics scene
+        if self.editor_scene:
+            from ui.sticker_editor import ElementItem
+            for it in self.editor_scene.items():
+                if isinstance(it, ElementItem) and it.element is e:
+                    it.setSelected(True)
+                    break
+
+    def on_elem_enabled_toggled(self, checked: bool):
+        e = self._selected_elem()
+        if e is None:
+            return
+        e.enabled = bool(checked)
+        self._refresh_editor()
+        self._populate_elem_combo()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def on_elem_geom_changed(self):
+        e = self._selected_elem()
+        if e is None:
+            return
+        e.x_mm = self.unit.to_mm(self.elem_x.value())
+        e.y_mm = self.unit.to_mm(self.elem_y.value())
+        e.w_mm = max(1.0, self.unit.to_mm(self.elem_w.value()))
+        e.h_mm = max(1.0, self.unit.to_mm(self.elem_h.value()))
+        e.rotation = self.elem_rot.value()
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def on_elem_font_changed(self):
+        e = self._selected_elem()
+        if e is None or e.id in ('barcode', 'logo'):
+            return
+        e.font_family = self.font_family.currentText()
+        e.font_size_pt = float(self.font_size_spin.value())
+        e.bold = self.bold_chk.isChecked()
+        e.italic = self.italic_chk.isChecked()
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def on_elem_color_clicked(self):
+        from PyQt5.QtWidgets import QColorDialog
+        e = self._selected_elem()
+        if e is None:
+            return
+        c = QColorDialog.getColor(QColor(e.color), self, "Pick text color")
+        if c.isValid():
+            e.color = c.name()
+            self._refresh_editor()
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
+
+    def on_elem_align_clicked(self, code: str):
+        e = self._selected_elem()
+        if e is None or e.id in ('barcode', 'logo'):
+            return
+        e.align = code
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def on_elem_image_fit_changed(self):
+        e = self._selected_elem()
+        if e is None:
+            return
+        e.image_fit = self.image_fit_combo.currentData()
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
+    def on_elem_load_image(self):
+        """Load an image into the selected logo element."""
+        e = self._selected_elem()
+        if e is None:
+            QMessageBox.information(self, "Select Element",
+                "Please select the 'Logo' element first.")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Image",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"
+        )
+        if not path:
+            return
+        try:
+            import base64
+            # Determine format
+            ext = path.lower().rsplit('.', 1)[-1] if '.' in path else 'png'
+            if ext in ('jpg', 'jpeg'):
+                fmt = 'JPEG'
+            elif ext == 'bmp':
+                fmt = 'BMP'
+            elif ext == 'gif':
+                fmt = 'GIF'
+            else:
+                fmt = 'PNG'
+            with open(path, 'rb') as f:
+                data = base64.b64encode(f.read()).decode('ascii')
+            e.image_data = data
+            e.image_format = fmt
+            self._refresh_editor()
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
+            QMessageBox.information(self, "Image Loaded",
+                f"✓ Image loaded into the '{e.label}' element.\n"
+                f"You can resize/reposition it using the controls above.")
+        except Exception as ex:
+            QMessageBox.critical(self, "Error", f"Could not load image:\n{ex}")
+
+    # ----------------------------------------------- logo upload (top-level)
+    def on_logo_clicked(self):
+        """Add a logo element to the template and load an image into it."""
+        # Check if a logo element already exists
+        logo_elem = None
+        for e in self.template.elements:
+            if e.id == 'logo':
+                logo_elem = e
+                break
+        if logo_elem is None:
+            # Create a new logo element at top-left
+            lay = self._current_layout()
+            logo_size = min(8.0, lay.sticker_h_mm * 0.4, lay.sticker_w_mm * 0.25)
+            logo_elem = StickerElement(
+                id='logo',
+                label='Logo / لوگو',
+                enabled=True,
+                x_mm=0.5, y_mm=0.5,
+                w_mm=logo_size, h_mm=logo_size,
+                image_data='',
+                image_format='PNG',
+                image_fit='contain',
+            )
+            self.template.elements.insert(0, logo_elem)
+        # Now load the image
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Logo Image",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"
+        )
+        if not path:
+            # If user cancelled but we created the element, leave it as a placeholder
+            self._refresh_preview()
+            return
+        try:
+            import base64
+            ext = path.lower().rsplit('.', 1)[-1] if '.' in path else 'png'
+            if ext in ('jpg', 'jpeg'):
+                fmt = 'JPEG'
+            elif ext == 'bmp':
+                fmt = 'BMP'
+            elif ext == 'gif':
+                fmt = 'GIF'
+            else:
+                fmt = 'PNG'
+            with open(path, 'rb') as f:
+                data = base64.b64encode(f.read()).decode('ascii')
+            logo_elem.image_data = data
+            logo_elem.image_format = fmt
+            logo_elem.enabled = True
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
+            self._refresh_preview()
+            # If we're in edit mode, refresh editor + combo
+            if self.edit_mode_btn.isChecked():
+                self._refresh_editor()
+                self._populate_elem_combo()
+            QMessageBox.information(self, "Logo Added",
+                f"✓ Logo added to the sticker.\n"
+                f"Use 'Edit Layout' mode to resize/reposition it.")
+        except Exception as ex:
+            QMessageBox.critical(self, "Error", f"Could not load logo:\n{ex}")
+
+    def on_remove_logo_clicked(self):
+        """Remove the logo element from the template."""
+        for i, e in enumerate(self.template.elements):
+            if e.id == 'logo':
+                del self.template.elements[i]
+                self.db.set_setting('sticker_template_json',
+                                    template_to_json(self.template))
+                self._refresh_preview()
+                if self.edit_mode_btn.isChecked():
+                    self._refresh_editor()
+                    self._populate_elem_combo()
+                QMessageBox.information(self, "Logo Removed",
+                    "✓ Logo removed from the sticker.")
+                return
+        QMessageBox.information(self, "No Logo", "There is no logo element in the sticker.")
+
+    # ----------------------------------------------- zoom controls
+    def on_zoom_in(self):
+        if self.preview_stack.currentIndex() == 1 and self.editor_view:
+            self.editor_view.scale(1.25, 1.25)
+            self._update_zoom_label()
+        else:
+            # For static preview, scale the pixmap
+            self._preview_zoom *= 1.25
+            self._apply_preview_zoom()
+
+    def on_zoom_out(self):
+        if self.preview_stack.currentIndex() == 1 and self.editor_view:
+            self.editor_view.scale(0.8, 0.8)
+            self._update_zoom_label()
+        else:
+            self._preview_zoom *= 0.8
+            self._apply_preview_zoom()
+
+    def on_zoom_actual(self):
+        """Show at actual physical size (1mm screen = 1mm paper)."""
+        if self.preview_stack.currentIndex() == 1 and self.editor_view:
+            # Reset to 1:1 (which means scale of 1.0 in scene coords)
+            from PyQt5.QtGui import QTransform
+            # The scene already has mm_per_px = 0.25 (so 1px = 0.25mm = 4px/mm)
+            # To make 1mm screen = 1mm paper, we need screen_scale = 1/(mm_per_px * (25.4/96))
+            # i.e., 96dpi screen, 4px/mm in scene → scale = 96/25.4/4 ≈ 0.945
+            screen_dpi = 96  # approximation
+            actual_scale = screen_dpi / 25.4 * 0.25  # = mm_per_px
+            # Actually simpler: scale = (screen dpi) / (scene dpi)
+            # scene_dpi = 25.4 / mm_per_px = 25.4 / 0.25 = 101.6
+            # scale = 96 / 101.6 ≈ 0.945
+            scene_dpi = 25.4 / self.editor_scene.mm_per_px
+            actual_scale = screen_dpi / scene_dpi
+            self.editor_view.setTransform(QTransform.fromScale(actual_scale, actual_scale))
+            self._update_zoom_label(actual_scale)
+        else:
+            self._preview_zoom = 1.0
+            self._apply_preview_zoom()
+
+    def on_zoom_fit(self):
+        if self.preview_stack.currentIndex() == 1 and self.editor_view:
+            self._fit_editor_view()
+            self._update_zoom_label()
+        else:
+            self._preview_zoom = 1.0
+            self._apply_preview_zoom()
+
+    def _update_zoom_label(self, scale: float = None):
+        if scale is None and self.editor_view:
+            m = self.editor_view.transform().m11()
+            scale = m
+        if scale:
+            self.zoom_label.setText(f"{int(scale * 100)}%")
+
+    def _apply_preview_zoom(self):
+        """Apply zoom to the static preview pixmap."""
+        if not hasattr(self, '_preview_zoom'):
+            self._preview_zoom = 1.0
+        if not hasattr(self, '_preview_base_pixmap') or self._preview_base_pixmap is None:
+            return
+        if self._preview_zoom < 0.1:
+            self._preview_zoom = 0.1
+        if self._preview_zoom > 10:
+            self._preview_zoom = 10
+        pm = self._preview_base_pixmap
+        new_w = int(pm.width() * self._preview_zoom)
+        new_h = int(pm.height() * self._preview_zoom)
+        scaled = pm.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.preview_label.setPixmap(scaled)
+        self.zoom_label.setText(f"{int(self._preview_zoom * 100)}%")
 
     # ----------------------------------------------- settings + history
     def on_settings_clicked(self):

@@ -1,31 +1,35 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.0.4
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.1.0
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.0.4):
-  ✔ ★ CRITICAL FIX: 'QSizeF is not defined' error — Print
-    button پر مکمل crash کا حل! (v2.0.3 میں ایک import missing تھا)
-  ✔ Preview میں ruler شامل — اب sticker کا actual size
-    (mm + inches) دکھائی دیتا ہے، چھوٹے cm marks کے ساتھ
-    — آپ اپنا physical label screen پر رکھ کر verify کر سکتے ہیں
-  ✔ Dimension lines on label — sticker کے چاروں طرف
-    actual width/height دکھائی دیتا ہے (مثلاً "37.1 mm" اور "24.4 mm")
-  ✔ Import audit test — مستقبل میں ایسے bugs کی rule-prevention
-    کے لیے automated test
+نئے فیچرز (v2.1.0):
+  ✔ 🖼 Logo add کا option — Add Logo button سے کوئی بھی image
+    (PNG/JPG) sticker پر add کریں، resize/reposition کریں
+  ✔ ✏ Inline editor — اب editor علیحدہ menu میں نہیں، main
+    window کے اندر preview area میں available ہے۔ "Edit Layout"
+    button دبائیں، preview interactive ہو جائے گی
+  ✔ 🖨 Print button کا color مختلف اور خوبصورت — orange gradient
+    میں، واضح نظر آئے گا
+  ✔ 🔍 Zoom controls — Zoom In/Out, 1:1 (Actual Size), Fit
+    preview area میں شامل
+  ✔ 📐 Preview actual sticker size — اب preview بہت بڑی نہیں
+    ہوگی، sticker کے actual physical size کے قریب دکھائی دے گی
+  ✔ 📊 Barcode اب preview میں پورا دکھائی دیتا ہے ( cutting
+    fix — module width کو fit کرنے کے لیے adjust کیا)
+  ✔ ✨ UI structure مزید خوبصورت — gradient buttons، better
+    spacing، professional look
+
+پرانے فیچرز (v2.0.4):
+  ✔ 'QSizeF is not defined' error fix
+  ✔ Preview میں ruler شامل
+  ✔ Import audit test
 
 پرانے فیچرز (v2.0.3):
   ✔ setFullPage(True) — label printers کے لیے critical
-  ✔ 1.5×1 انچ preset — آپ کے label کا exact size
-  ✔ 6 inch-based presets
+  ✔ 13 preset label sizes (mm + inches)
   ✔ Test Print button
   ✔ Printer info display with match indicator
-  ✔ Diagnostic info in error messages
-
-پرانے فیچرز (v2.0.2):
-  ✔ Custom Print Dialog (replaces QPrintDialog)
-  ✔ Quick Print button
-  ✔ Better error messages
 
 پرانے فیچرز (v2.0.1):
   ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں

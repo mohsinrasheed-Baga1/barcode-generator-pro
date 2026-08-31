@@ -129,49 +129,55 @@ jobs:
             - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new in v2.0.4
+            ### What's new in v2.1.0
 
-            #### 🚨 CRITICAL FIX: Print button crash on 'QSizeF is not defined'
+            #### 🖼 New: Logo support
+            - Added "Add Logo" button in the main window
+            - Load any PNG/JPEG/BMP/GIF image as a logo on the sticker
+            - Logo is stored as base64 in the template (persisted across sessions)
+            - Three fit modes: Contain (full image visible), Cover (fill, may crop), Stretch
+            - Resize/reposition logo using the inline editor
 
-            The v2.0.3 release had a missing import — `QSizeF` was being
-            used in `main_window.py` (in `_do_test_print`, `on_quick_print_clicked`,
-            and `on_preview_clicked`) but was never imported! This caused
-            the Print button to fail with `NameError: name 'QSizeF' is not defined`
-            on every Windows system.
+            #### ✏ New: Inline sticker editor (no more separate dialog)
+            - The sticker editor is now embedded in the main window
+            - Click "✏ Edit Layout (inline)" button to toggle edit mode
+            - The preview area becomes interactive — click any element to select
+            - Drag to move, use property panel to resize/rotate
+            - All controls (font, color, alignment, image) are right there
+            - No more opening a separate dialog window
 
-            Fix: Added `QSizeF` to the `from PyQt5.QtCore import ...` statement.
+            #### 🖨 Beautiful Print button
+            - Print button now has a prominent orange/red gradient — stands out
+            - Quick Print: green gradient
+            - Save as PDF: amber gradient
+            - All buttons have hover/pressed states for professional feel
 
-            I'm very sorry this took 4 releases to fix — the root cause was
-            an inadequate test that didn't actually invoke the print code path
-            on a real PyQt5 install. I've now added a comprehensive import
-            audit test (`scripts/test_imports.py`) that checks every Qt class
-            used in the codebase against the imports in each file. This
-            prevents any future 'X is not defined' bugs from reaching users.
+            #### 🔍 Zoom controls for preview
+            - Zoom In / Zoom Out buttons
+            - "1:1 (Actual Size)" — shows sticker at physical size (1mm screen = 1mm paper)
+            - "Fit" — fits preview to window
+            - Current zoom percentage displayed
+            - Useful for verifying the sticker matches the physical label
 
-            #### New: Preview now shows actual sticker size with ruler
+            #### 📐 Preview improvements
+            - Preview now renders at a more realistic size (not too big)
+            - User can zoom in/out to inspect details
+            - Barcode now displays fully in preview (fixed cutting issue)
+              - Computed module_width based on element rect width
+              - 113 modules fit in 95% of rect width
+            - Better ruler ticks (cm + mm marks) and dimension lines
 
-            The preview pane now displays:
-            - A bold header showing "Sticker size: 38.1 × 25.4 mm (1.50 × 1.00 in)"
-            - Ruler ticks (cm and mm marks) along the top and left of the paper
-            - For label mode: dimension lines on the sticker showing actual
-              width and height (e.g. "37.1 mm" and "24.4 mm")
-            - Gray background so the white paper/sticker is clearly visible
-
-            This lets you verify the sticker size at a glance — you can even
-            hold your physical label up to the screen to confirm it matches.
+            #### ✨ UI polish
+            - Gradient buttons with hover/pressed states
+            - Better spacing and grouping of controls
+            - More professional, modern look
 
             #### Earlier features (still included)
-            - Custom Print Setup Dialog (replaces unreliable QPrintDialog)
-            - Quick Print button — sends to default printer
-            - Test Print button — print 1 label as test
-            - Printer info display with ✓/✗ match indicator
-            - Diagnostic info in error messages
+            - Custom Print Setup Dialog with printer list + match indicator
+            - Test Print button (print 1 label as test)
             - setFullPage(True) for proper label printing
-            - 13 preset label sizes including 1.5×1 inch (user's label)
-            - Interactive Sticker Layout Editor with drag, resize, rotate
-            - Keyboard arrow keys nudge elements (1mm / 0.1mm with Shift)
-            - Delete key disables element
-            - Barcode optional (Include Barcode toggle)
+            - 13 preset label sizes (mm + inches), including 1.5×1 inch
+            - Quick Print button — sends to default printer
             - Save as PDF — always works
             - mm / inches unit toggle
             - Per-element font family, size, bold, italic, color, alignment
@@ -182,6 +188,7 @@ jobs:
             - Bulk CSV import
             - SQLite history (search + reuse)
             - Bilingual UI (English + Urdu)
+            - Import audit test (prevents 'X is not defined' bugs)
 
             See `README.txt` in the repo for full instructions.
           draft: false

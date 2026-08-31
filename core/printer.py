@@ -9,7 +9,7 @@ Key features:
 - TextDontClip flag to prevent text from being cut off
 - _draw_element_at_origin for in-editor rendering
 """
-from PyQt5.QtCore import Qt, QRectF, QSizeF, QPointF
+from PyQt5.QtCore import Qt, QRectF, QSizeF, QPointF, QByteArray
 from PyQt5.QtGui import (QPainter, QPixmap, QImage, QPageSize, QColor,
                           QPen, QFont, QFontDatabase, QTransform)
 from PyQt5.QtPrintSupport import QPrinter
@@ -61,25 +61,76 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
 
     rect = QRectF(x_px, y_px, w_px, h_px)
 
-    if elem.id == 'barcode':
+    # ---------- LOGO element ----------
+    if elem.id == 'logo' or elem.image_data:
+        if elem.image_data:
+            try:
+                import base64
+                from PyQt5.QtGui import QPixmap
+                pm = QPixmap()
+                ba = QByteArray(base64.b64decode(elem.image_data))
+                pm.loadFromData(ba, elem.image_format or 'PNG')
+                if not pm.isNull():
+                    if elem.image_fit == 'stretch':
+                        painter.drawPixmap(rect.toRect(), pm)
+                    elif elem.image_fit == 'cover':
+                        # Scale to cover, crop overflow
+                        src_ratio = pm.width() / pm.height()
+                        dst_ratio = rect.width() / rect.height()
+                        if src_ratio > dst_ratio:
+                            new_w = pm.height() * dst_ratio
+                            sx = (pm.width() - new_w) / 2
+                            src = QRectF(sx, 0, new_w, pm.height())
+                        else:
+                            new_h = pm.width() / dst_ratio
+                            sy = (pm.height() - new_h) / 2
+                            src = QRectF(0, sy, pm.width(), new_h)
+                        painter.drawPixmap(rect, pm, src)
+                    else:  # 'contain' — full image visible, may have padding
+                        scaled = pm.scaled(int(rect.width()), int(rect.height()),
+                                            Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        tx = rect.left() + (rect.width() - scaled.width()) / 2
+                        ty = rect.top() + (rect.height() - scaled.height()) / 2
+                        painter.drawPixmap(QPointF(tx, ty), scaled)
+            except Exception:
+                # If image fails to load, draw a placeholder
+                painter.setPen(QPen(QColor('#999'), 0.5, Qt.DashLine))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(rect)
+                painter.setPen(QColor('#999'))
+                painter.setFont(QFont('Arial', max(5, int(h_px / 6))))
+                painter.drawText(rect, Qt.AlignCenter, "Logo")
+    # ---------- BARCODE element ----------
+    elif elem.id == 'barcode':
         bc = data.get('barcode', '')
         if not bc:
             painter.restore()
             return
         try:
-            module_w = (w_px / 100) * 0.165
+            # Generate barcode scaled to fit the element rect exactly.
+            # Use a reasonable module width based on the rect width,
+            # so the entire barcode is visible (Width bounding, not stretched).
+            # EAN-13 has 113 modules total (95 bars + 18 guard/quiet).
+            # We compute module_width so that 113 modules fit in ~95% of rect width.
+            num_modules = 113  # EAN-13 total modules
+            module_w = (w_px * 0.95) / num_modules
+            # Module height: use full element height (digits will overlay)
+            module_h = h_px * 0.75
             img, full_code = generate_ean13_image(
                 bc,
                 module_width=module_w,
-                module_height=h_px * 0.7,
+                module_height=module_h,
             )
-            scaled = img.scaled(int(w_px), int(h_px),
+            # The generated image may be slightly larger or smaller than rect.
+            # Use KeepAspectRatio to ensure full barcode visible, centered.
+            scaled = img.scaled(int(w_px * 0.98), int(h_px * 0.95),
                                 Qt.KeepAspectRatio, Qt.SmoothTransformation)
             tx = x_px + (w_px - scaled.width()) / 2
             ty = y_px + (h_px - scaled.height()) / 2
             painter.drawImage(QPointF(tx, ty), scaled)
         except Exception:
             pass
+    # ---------- Text element ----------
     else:
         text = get_text_for_element(elem.id, data)
         if not text:
@@ -88,9 +139,6 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
         font = _element_to_qfont(elem)
         painter.setFont(font)
         painter.setPen(QColor(elem.color or '#000000'))
-        # IMPORTANT: TextDontClip prevents text from being cut off when
-        # the element rect is smaller than the text size. The user can
-        # still adjust the element size in the editor.
         flags = _align_flag(elem.align) | Qt.TextDontClip
         painter.drawText(rect, flags, text)
 
@@ -112,25 +160,69 @@ def _draw_element_at_origin(painter: QPainter, elem: StickerElement,
         painter.rotate(elem.rotation)
         painter.translate(-cx, -cy)
 
-    if elem.id == 'barcode':
+    # ---------- LOGO element ----------
+    if elem.id == 'logo' or elem.image_data:
+        if elem.image_data:
+            try:
+                import base64
+                pm = QPixmap()
+                ba = QByteArray(base64.b64decode(elem.image_data))
+                pm.loadFromData(ba, elem.image_format or 'PNG')
+                if not pm.isNull():
+                    if elem.image_fit == 'stretch':
+                        painter.drawPixmap(local_rect.toRect(), pm)
+                    elif elem.image_fit == 'cover':
+                        src_ratio = pm.width() / pm.height()
+                        dst_ratio = local_rect.width() / local_rect.height()
+                        if src_ratio > dst_ratio:
+                            new_w = pm.height() * dst_ratio
+                            sx = (pm.width() - new_w) / 2
+                            src = QRectF(sx, 0, new_w, pm.height())
+                        else:
+                            new_h = pm.width() / dst_ratio
+                            sy = (pm.height() - new_h) / 2
+                            src = QRectF(0, sy, pm.width(), new_h)
+                        painter.drawPixmap(local_rect, pm, src)
+                    else:
+                        scaled = pm.scaled(int(local_rect.width()), int(local_rect.height()),
+                                            Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        tx = local_rect.left() + (local_rect.width() - scaled.width()) / 2
+                        ty = local_rect.top() + (local_rect.height() - scaled.height()) / 2
+                        painter.drawPixmap(QPointF(tx, ty), scaled)
+            except Exception:
+                pass
+        else:
+            # No image loaded — draw placeholder
+            painter.setPen(QPen(QColor('#999'), 0.5, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(local_rect)
+            painter.setPen(QColor('#999'))
+            painter.setFont(QFont('Arial', max(5, int(local_rect.height() / 6))))
+            painter.drawText(local_rect, Qt.AlignCenter, "Logo")
+    # ---------- BARCODE element ----------
+    elif elem.id == 'barcode':
         bc = data.get('barcode', '')
         if bc:
             try:
                 w_px = local_rect.width()
                 h_px = local_rect.height()
-                module_w = (w_px / 100) * 0.165
+                # Same logic as _draw_element — fit 113 modules in 95% of width
+                num_modules = 113
+                module_w = (w_px * 0.95) / num_modules
+                module_h = h_px * 0.75
                 img, full_code = generate_ean13_image(
                     bc,
                     module_width=module_w,
-                    module_height=h_px * 0.7,
+                    module_height=module_h,
                 )
-                scaled = img.scaled(int(w_px), int(h_px),
+                scaled = img.scaled(int(w_px * 0.98), int(h_px * 0.95),
                                     Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 tx = local_rect.left() + (w_px - scaled.width()) / 2
                 ty = local_rect.top() + (h_px - scaled.height()) / 2
                 painter.drawImage(QPointF(tx, ty), scaled)
             except Exception:
                 pass
+    # ---------- Text element ----------
     else:
         text = get_text_for_element(elem.id, data)
         if text:
@@ -278,9 +370,17 @@ def render_preview(layout: StickerLayout, items: list,
 
     For label mode, automatically scales up to keep preview visible.
     """
+    # Render at screen DPI (~96) by default — so 1mm on screen = 1mm on paper.
+    # This gives the user a true-to-size preview. If they want bigger, they
+    # can zoom in using the main window's zoom controls.
+    # For label mode, use 150 DPI as a compromise — actual size + visible.
     if layout.is_label:
-        dpi = max(dpi, int(500 / (layout.paper_w_mm / 25.4)))
-        dpi = max(dpi, 300)
+        # For label mode, keep at screen DPI so sticker looks actual size
+        # (user can hold their physical label up to the screen to verify)
+        dpi = max(96, dpi)  # don't go below screen DPI
+    else:
+        # A4 sheet — use moderate DPI to fit nicely on screen
+        dpi = max(96, dpi)
 
     scale = dpi / 25.4
     sticker_w_px = layout.sticker_w_mm * scale
