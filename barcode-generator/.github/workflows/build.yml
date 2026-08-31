@@ -129,56 +129,53 @@ jobs:
             - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new in v2.1.0
+            ### What's new in v2.2.0
 
-            #### 🖼 New: Logo support
-            - Added "Add Logo" button in the main window
-            - Load any PNG/JPEG/BMP/GIF image as a logo on the sticker
-            - Logo is stored as base64 in the template (persisted across sessions)
-            - Three fit modes: Contain (full image visible), Cover (fill, may crop), Stretch
-            - Resize/reposition logo using the inline editor
+            #### 🖌️ Illustrator-like interactive editor
+            - Each element on the canvas now has 9 handles:
+              * 4 corner handles (top-left, top-right, bottom-left, bottom-right) — resize both dimensions
+              * 4 edge handles (top, bottom, left, right) — resize one dimension
+              * 1 rotate handle above the top edge — rotate to any angle
+            - Drag the body to move (cursor: SizeAllCursor)
+            - Drag any corner to resize (cursor: SizeFDiagCursor / SizeBDiagCursor)
+            - Drag edges to resize one dimension (cursor: SizeHorCursor / SizeVerCursor)
+            - Drag rotate handle to rotate (cursor: CrossCursor)
+            - Cursor changes on hover to indicate what action is available
+            - Resize respects the opposite corner/edge — it stays fixed during resize
+            - Rotation is preserved during resize
 
-            #### ✏ New: Inline sticker editor (no more separate dialog)
-            - The sticker editor is now embedded in the main window
-            - Click "✏ Edit Layout (inline)" button to toggle edit mode
-            - The preview area becomes interactive — click any element to select
-            - Drag to move, use property panel to resize/rotate
-            - All controls (font, color, alignment, image) are right there
-            - No more opening a separate dialog window
+            #### 📱 Responsive UI (fixes "size distributed" issue)
+            - Window now uses QSplitter — user can drag the divider to resize panels
+            - Both left (input form) and right (preview) panels are in scroll areas
+            - Minimum window size 900x600 — UI works on small screens too
+            - On small screens, panels scroll instead of getting squished
+            - On large screens, panels expand to fill space
+            - Fixed the issue where UI looked "distributed/broken" on smaller screens
 
-            #### 🖨 Beautiful Print button
-            - Print button now has a prominent orange/red gradient — stands out
-            - Quick Print: green gradient
-            - Save as PDF: amber gradient
-            - All buttons have hover/pressed states for professional feel
+            #### 🎯 Better element selection
+            - Click on any element to select it
+            - Handles become visible only when selected (clean canvas otherwise)
+            - Selection border is solid blue; unselected is dashed gray
+            - Line from top edge to rotate handle for clear visibility
 
-            #### 🔍 Zoom controls for preview
-            - Zoom In / Zoom Out buttons
-            - "1:1 (Actual Size)" — shows sticker at physical size (1mm screen = 1mm paper)
-            - "Fit" — fits preview to window
-            - Current zoom percentage displayed
-            - Useful for verifying the sticker matches the physical label
-
-            #### 📐 Preview improvements
-            - Preview now renders at a more realistic size (not too big)
-            - User can zoom in/out to inspect details
-            - Barcode now displays fully in preview (fixed cutting issue)
-              - Computed module_width based on element rect width
-              - 113 modules fit in 95% of rect width
-            - Better ruler ticks (cm + mm marks) and dimension lines
-
-            #### ✨ UI polish
-            - Gradient buttons with hover/pressed states
-            - Better spacing and grouping of controls
-            - More professional, modern look
+            #### ⌨️ Keyboard shortcuts
+            - Arrow keys: nudge selected element 1mm
+            - Shift + Arrow: nudge 0.1mm (fine control)
+            - Delete / Backspace: disable selected element
 
             #### Earlier features (still included)
+            - 🖼 Logo support (PNG/JPEG/BMP/GIF)
+            - ✏ Inline editor (no separate dialog)
+            - 🖨 Beautiful gradient Print button (orange/red)
+            - ⚡ Quick Print button (green)
+            - 📄 Save as PDF button (amber)
+            - 🔍 Zoom controls (In/Out/Actual Size/Fit)
+            - 📐 Preview at actual sticker size
+            - 📊 Barcode displays fully in preview
             - Custom Print Setup Dialog with printer list + match indicator
             - Test Print button (print 1 label as test)
             - setFullPage(True) for proper label printing
             - 13 preset label sizes (mm + inches), including 1.5×1 inch
-            - Quick Print button — sends to default printer
-            - Save as PDF — always works
             - mm / inches unit toggle
             - Per-element font family, size, bold, italic, color, alignment
             - EAN-13 barcode generator

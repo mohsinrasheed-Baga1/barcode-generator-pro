@@ -43,14 +43,17 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.resize(1240, 820)
+        # Make window responsive — start at reasonable size
+        self.resize(1280, 800)
+        # Minimum size — UI should work on small screens too
+        self.setMinimumSize(900, 600)
 
         self.db = Database()
 
@@ -81,17 +84,16 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        # Use QSplitter so the user can resize left/right panels
+        from PyQt5.QtWidgets import QSplitter
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setContentsMargins(0, 0, 0, 0)
 
-        # ---- left: input form ----
-        left = QWidget()
-        left.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        left.setMaximumWidth(460)
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+        # ---- left: input form (wrapped in scroll area for small screens) ----
+        left_inner = QWidget()
+        left_layout = QVBoxLayout(left_inner)
+        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setSpacing(6)
 
         title = QLabel(f"<h2>{APP_TITLE}</h2><i>Version {APP_VERSION}</i>")
         title.setStyleSheet("color: #1a4d8f;")
@@ -503,8 +505,34 @@ class MainWindow(QMainWindow):
 
         right_layout.addWidget(self.props_panel)
 
-        root.addWidget(left, 0)
-        root.addWidget(right, 1)
+        # ---- Wrap left panel in scroll area for small screens ----
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setWidget(left_inner)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        left_scroll.setMinimumWidth(380)
+        left_scroll.setMaximumWidth(460)
+
+        # ---- Wrap right panel in scroll area too ----
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setWidget(right)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        right_scroll.setMinimumWidth(400)
+
+        # ---- Add to splitter ----
+        self.splitter.addWidget(left_scroll)
+        self.splitter.addWidget(right_scroll)
+        # Set sizes — left smaller, right bigger
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 3)
+        self.splitter.setSizes([460, 820])
+
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.addWidget(self.splitter)
 
         self._build_statusbar()
         self._update_layout_info()

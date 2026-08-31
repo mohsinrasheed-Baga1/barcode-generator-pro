@@ -1,35 +1,25 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.1.0
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.2.0
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.1.0):
-  ✔ 🖼 Logo add کا option — Add Logo button سے کوئی بھی image
-    (PNG/JPG) sticker پر add کریں، resize/reposition کریں
-  ✔ ✏ Inline editor — اب editor علیحدہ menu میں نہیں، main
-    window کے اندر preview area میں available ہے۔ "Edit Layout"
-    button دبائیں، preview interactive ہو جائے گی
-  ✔ 🖨 Print button کا color مختلف اور خوبصورت — orange gradient
-    میں، واضح نظر آئے گا
-  ✔ 🔍 Zoom controls — Zoom In/Out, 1:1 (Actual Size), Fit
-    preview area میں شامل
-  ✔ 📐 Preview actual sticker size — اب preview بہت بڑی نہیں
-    ہوگی، sticker کے actual physical size کے قریب دکھائی دے گی
-  ✔ 📊 Barcode اب preview میں پورا دکھائی دیتا ہے ( cutting
-    fix — module width کو fit کرنے کے لیے adjust کیا)
-  ✔ ✨ UI structure مزید خوبصورت — gradient buttons، better
-    spacing، professional look
+نئے فیچرز (v2.2.0):
+  ✔ 🖌️ Illustrator-like editor — corners سے drag کر کے resize،
+    rotate handle سے rotate، body drag سے move — سب کچھ canvas پر
+  ✔ 📱 Responsive UI — چھوٹی یا بڑی screen پر درست دکھائی دے،
+    distribute نہیں ہوگا (QSplitter + scrollable panels)
+  ✔ 🎯 9 handles ہر element پر: 8 resize (corners + edges) + 1 rotate
+  ✔ 🖱️ Cursor feedback — corner پر SizeFDiagCursor، rotate پر
+    CrossCursor، body پر SizeAllCursor
+  ✔ ⌨️ Arrow keys نولہ nudge (1mm / Shift=0.1mm) + Delete disable
 
-پرانے فیچرز (v2.0.4):
-  ✔ 'QSizeF is not defined' error fix
-  ✔ Preview میں ruler شامل
-  ✔ Import audit test
-
-پرانے فیچرز (v2.0.3):
-  ✔ setFullPage(True) — label printers کے لیے critical
-  ✔ 13 preset label sizes (mm + inches)
-  ✔ Test Print button
-  ✔ Printer info display with match indicator
+پرانے فیچرز (v2.1.0):
+  ✔ 🖼 Logo add کا option
+  ✔ ✏ Inline editor (no separate dialog)
+  ✔ 🖨 Beautiful gradient Print button
+  ✔ 🔍 Zoom controls (Zoom In/Out/Actual Size/Fit)
+  ✔ 📐 Preview actual sticker size
+  ✔ 📊 Barcode پورا دکھائی دیتا ہے
 
 پرانے فیچرز (v2.0.1):
   ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں
