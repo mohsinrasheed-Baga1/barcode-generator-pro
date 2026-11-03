@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QMessageBox, QFileDialog, QDialog, QGroupBox,
     QScrollArea, QFrame, QSizePolicy, QApplication, QStatusBar,
     QInputDialog, QDialogButtonBox, QListWidget, QListWidgetItem,
-    QStackedWidget, QColorDialog
+    QStackedWidget, QColorDialog, QGraphicsView
 )
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog, QPrintDialog, QPrinterInfo
 
@@ -43,7 +43,49 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.4.0"
+
+
+class ZoomableGraphicsView(QGraphicsView):
+    """QGraphicsView with mouse wheel zoom support."""
+    def __init__(self, scene=None, parent=None):
+        super().__init__(scene, parent)
+        self.setRenderHint(QPainter.Antialiasing, True)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self._zoom_factor = 1.0
+
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.ControlModifier:
+            # Ctrl+wheel = zoom
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.scale(1.15, 1.15)
+            else:
+                self.scale(1/1.15, 1/1.15)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+
+class ZoomableScrollArea(QScrollArea):
+    """QScrollArea that supports Ctrl+wheel zoom for the preview pixmap."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._main_window = None
+
+    def set_main_window(self, mw):
+        self._main_window = mw
+
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.ControlModifier and self._main_window:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._main_window.on_zoom_in()
+            else:
+                self._main_window.on_zoom_out()
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -359,7 +401,8 @@ class MainWindow(QMainWindow):
         self.preview_stack = QStackedWidget()
 
         # ----- Index 0: Static preview (QLabel in scroll area) -----
-        self.preview_scroll = QScrollArea()
+        self.preview_scroll = ZoomableScrollArea()
+        self.preview_scroll.set_main_window(self)
         self.preview_scroll.setWidgetResizable(True)
         self.preview_scroll.setAlignment(Qt.AlignCenter)
         self.preview_scroll.setBackgroundRole(QPalette.Mid)
@@ -398,6 +441,11 @@ class MainWindow(QMainWindow):
         self.del_sel_btn = QPushButton("✖ Remove Selected Row")
         self.del_sel_btn.clicked.connect(self.on_remove_selected)
         del_row.addWidget(self.del_sel_btn)
+        self.fill_sheet_btn = QPushButton("📋 Fill Sheet")
+        self.fill_sheet_btn.setToolTip("Duplicate first item to fill all sticker slots on the sheet")
+        self.fill_sheet_btn.setStyleSheet("background: #e8f5e9; color: #2e7d32; font-weight: bold;")
+        self.fill_sheet_btn.clicked.connect(self.on_fill_sheet_clicked)
+        del_row.addWidget(self.fill_sheet_btn)
         self.del_all_btn = QPushButton("✖ Clear All")
         self.del_all_btn.clicked.connect(self.on_clear_clicked)
         del_row.addWidget(self.del_all_btn)
@@ -607,6 +655,28 @@ class MainWindow(QMainWindow):
         self.current_items.clear()
         self._refresh_preview()
 
+    def on_fill_sheet_clicked(self):
+        """Duplicate the first item to fill all sticker slots on the current sheet."""
+        if not self.current_items:
+            QMessageBox.warning(self, "Empty",
+                                "Please add at least one sticker first, then click Fill Sheet.")
+            return
+        lay = self._current_layout()
+        slots = total_slots(lay)
+        first = self.current_items[0]
+        # Fill up to the sheet capacity
+        import copy
+        while len(self.current_items) < slots:
+            self.current_items.append(copy.deepcopy(first))
+        # If more than one sheet's worth, trim to exact multiple
+        if len(self.current_items) > slots:
+            self.current_items = self.current_items[:slots]
+        self._refresh_preview()
+        self.statusBar().showMessage(
+            f"Filled sheet: {len(self.current_items)} stickers on 1 sheet",
+            5000
+        )
+
     def on_remove_selected(self):
         sm = self.items_table.selectionModel()
         if sm is None:
@@ -678,11 +748,22 @@ class MainWindow(QMainWindow):
         self.db.set_setting('layout_key', key)
         lay = self._current_layout()
         if lay is not None:
-            self.template.sticker_w_mm = lay.sticker_w_mm
-            self.template.sticker_h_mm = lay.sticker_h_mm
+            # CRITICAL FIX: Regenerate the template for the new sticker dimensions.
+            # Previously we only updated sticker_w_mm/h_mm but kept old element
+            # positions — which were designed for a different sticker size.
+            # This caused elements (especially barcode) to be at wrong positions
+            # or extend beyond the sticker boundary, making them invisible.
+            # Now we regenerate the template with proper positions for the new size.
+            # Preserve barcode enabled/disabled state from Include Barcode checkbox.
+            include_barcode = self.barcode_enabled_chk.isChecked() if hasattr(self, 'barcode_enabled_chk') else True
+            self.template = default_template(
+                lay.sticker_w_mm, lay.sticker_h_mm,
+                include_barcode=include_barcode,
+            )
             self.db.set_setting('sticker_template_json', template_to_json(self.template))
         self._update_layout_info()
         self._refresh_preview()
+        self._update_statusbar()
 
     def _current_layout(self) -> StickerLayout:
         if self.layout_key == '__custom__' and self.custom_layout is not None:
@@ -1061,7 +1142,6 @@ class MainWindow(QMainWindow):
         if self._editor_initialized:
             return
         from ui.sticker_editor import StickerScene, ElementItem
-        from PyQt5.QtWidgets import QGraphicsView
         # Build sample data from current inputs
         if self.current_items:
             sample_data = self.current_items[0]
@@ -1071,7 +1151,7 @@ class MainWindow(QMainWindow):
         self.template.sticker_w_mm = lay.sticker_w_mm
         self.template.sticker_h_mm = lay.sticker_h_mm
         self.editor_scene = StickerScene(self.template, sample_data)
-        self.editor_view = QGraphicsView(self.editor_scene)
+        self.editor_view = ZoomableGraphicsView(self.editor_scene)
         self.editor_view.setRenderHint(QPainter.Antialiasing, True)
         self.editor_view.setBackgroundBrush(QColor('#d0d0d0'))
         self.editor_view.setMinimumSize(400, 300)

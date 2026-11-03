@@ -1,9 +1,9 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.3.0
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.4.0
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.3.0):
+نئے فیچرز (v2.4.0):
   ✔ 🏷 Speed-X SP 700U presets شامل:
     • 110×25 mm sheet (3 stickers per row, each 32×25 mm)
     • 32×25 mm single sticker
