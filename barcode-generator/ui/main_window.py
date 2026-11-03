@@ -43,11 +43,11 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
-    """QGraphicsView with direct mouse wheel zoom (no Ctrl needed)."""
+    """QGraphicsView with direct mouse wheel zoom toward cursor (Canva-like)."""
     def __init__(self, scene=None, parent=None):
         super().__init__(scene, parent)
         self.setRenderHint(QPainter.Antialiasing, True)
@@ -55,12 +55,19 @@ class ZoomableGraphicsView(QGraphicsView):
         self._zoom_factor = 1.0
 
     def wheelEvent(self, event):
-        # Direct wheel zoom — no Ctrl modifier needed
+        # Zoom toward cursor position (like Canva/Photoshop)
+        # Save the scene point under the cursor before zoom
+        cursor_scene_pos = self.mapToScene(event.pos())
+        # Apply zoom
         delta = event.angleDelta().y()
-        if delta > 0:
-            self.scale(1.15, 1.15)
-        else:
-            self.scale(1/1.15, 1/1.15)
+        factor = 1.15 if delta > 0 else 1/1.15
+        self.scale(factor, factor)
+        # After zoom, the scene point under the cursor has changed.
+        # Translate the view to keep the cursor point stable.
+        new_cursor_scene_pos = self.mapToScene(event.pos())
+        dx = new_cursor_scene_pos.x() - cursor_scene_pos.x()
+        dy = new_cursor_scene_pos.y() - cursor_scene_pos.y()
+        self.translate(dx, dy)
         event.accept()
 
 
@@ -1129,7 +1136,7 @@ class MainWindow(QMainWindow):
         lay = self._current_layout()
         self.template.sticker_w_mm = lay.sticker_w_mm
         self.template.sticker_h_mm = lay.sticker_h_mm
-        self.editor_scene = StickerScene(self.template, sample_data)
+        self.editor_scene = StickerScene(self.template, sample_data, layout=lay)
         self.editor_view = ZoomableGraphicsView(self.editor_scene)
         self.editor_view.setRenderHint(QPainter.Antialiasing, True)
         self.editor_view.setBackgroundBrush(QColor('#d0d0d0'))
@@ -1164,6 +1171,7 @@ class MainWindow(QMainWindow):
         self.template.sticker_w_mm = lay.sticker_w_mm
         self.template.sticker_h_mm = lay.sticker_h_mm
         self.editor_scene.template = self.template
+        self.editor_scene.layout = lay  # Update layout for full-sheet view
         self.editor_scene.refresh()
         # Fit the view to the scene
         QTimer.singleShot(20, self._fit_editor_view)
