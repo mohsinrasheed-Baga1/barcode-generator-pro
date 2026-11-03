@@ -92,16 +92,19 @@ class HandleItem(QGraphicsRectItem):
 class ElementItem(QGraphicsRectItem):
     """
     Selectable, movable, resizable, rotatable element on the canvas.
-    Position: setPos() (scene coords)
+    Position: setPos() (scene coords, includes slot offset)
     Size: setRect(0, 0, w, h) — local coords, top-left at (0,0)
     Rotation: setRotation() — around center of rect
     """
     def __init__(self, element: StickerElement, mm_per_px: float,
-                 parent_view: 'StickerScene'):
+                 parent_view: 'StickerScene',
+                 slot_x: float = 0.0, slot_y: float = 0.0):
         super().__init__()
         self.element = element
         self.mm_per_px = mm_per_px
         self.parent_view = parent_view
+        self.slot_x = slot_x  # slot offset in mm (first slot's position)
+        self.slot_y = slot_y
 
         self.setFlags(QGraphicsItem.ItemIsSelectable
                       | QGraphicsItem.ItemIsMovable
@@ -130,8 +133,9 @@ class ElementItem(QGraphicsRectItem):
 
     def _update_geometry(self):
         px_per_mm = 1.0 / self.mm_per_px
-        x = self.element.x_mm * px_per_mm
-        y = self.element.y_mm * px_per_mm
+        # Position includes slot offset (for full-sheet view)
+        x = (self.slot_x + self.element.x_mm) * px_per_mm
+        y = (self.slot_y + self.element.y_mm) * px_per_mm
         w = self.element.w_mm * px_per_mm
         h = self.element.h_mm * px_per_mm
         self.setPos(x, y)
@@ -202,9 +206,10 @@ class ElementItem(QGraphicsRectItem):
                 self.setFocus()
         elif change == QGraphicsItem.ItemPositionHasChanged:
             # pos changed due to drag — update element.x_mm/y_mm
+            # Subtract slot offset to get position relative to sticker
             px_per_mm = 1.0 / self.mm_per_px
-            self.element.x_mm = self.pos().x() / px_per_mm
-            self.element.y_mm = self.pos().y() / px_per_mm
+            self.element.x_mm = (self.pos().x() / px_per_mm) - self.slot_x
+            self.element.y_mm = (self.pos().y() / px_per_mm) - self.slot_y
             self.parent_view.element_changed.emit(self.element)
         return super().itemChange(change, value)
 
@@ -408,24 +413,29 @@ class ElementItem(QGraphicsRectItem):
 
     # ------------------------------------------------------ Rotate logic
     def _do_rotate(self, event):
-        """Rotate the element based on angle to the rotate handle position."""
-        # Get center in scene coords
-        center_scene = self.mapToScene(self.rect().center())
-        mouse_scene = self.mapToScene(event.pos())
-        # Angle from center to mouse (in scene coords)
+        """Rotate the element — ONLY changes rotation, does NOT move element.
+        Uses scenePos() for reliable mouse tracking (independent of rotation)."""
         import math
-        v = QPointF(mouse_scene.x() - center_scene.x(),
-                    mouse_scene.y() - center_scene.y())
-        # Qt's angle: 0 = right (east), increases counter-clockwise (in screen coords, y is down, so it's clockwise visually)
-        angle_rad = math.atan2(v.y(), v.x())
+        # Get center in scene coords — this is stable because rotation is
+        # around the center, so mapToScene(rect.center()) doesn't change
+        # when rotation changes.
+        center_scene = self.mapToScene(self.rect().center())
+        # Use event.scenePos() — NOT mapToScene(event.pos()), because
+        # pos() is in local coords which changes with rotation.
+        mouse_scene = event.scenePos()
+        # Angle from center to mouse
+        dx = mouse_scene.x() - center_scene.x()
+        dy = mouse_scene.y() - center_scene.y()
+        angle_rad = math.atan2(dy, dx)
         angle_deg = angle_rad * 180 / math.pi
-        # Add 90 to make "up" = 0
+        # "up" (negative y in screen coords) = 0 degrees, clockwise positive
         new_rot = angle_deg + 90
         # Normalize to -180..180
         while new_rot > 180:
             new_rot -= 360
         while new_rot < -180:
             new_rot += 360
+        # ONLY set rotation — do NOT change position
         self.element.rotation = new_rot
         self.setRotation(new_rot)
         self.update()
@@ -463,28 +473,79 @@ class StickerScene(QGraphicsScene):
     element_layout_changed = pyqtSignal(object)  # emitted when resize/rotate completes
 
     def __init__(self, template: StickerTemplate, sample_data: dict,
-                 parent=None):
+                 layout=None, parent=None):
+        """If layout is provided, shows the full sheet (paper) with all sticker slots.
+        Elements are editable on the first slot; all slots render the same template."""
         super().__init__(parent)
         self.template = template
         self.sample_data = sample_data
+        self.layout = layout  # StickerLayout or None
         self.mm_per_px = 0.25  # 1 px = 0.25 mm
         self._build_items()
 
     def _build_items(self):
         self.clear()
         px_per_mm = 1.0 / self.mm_per_px
-        sw = self.template.sticker_w_mm * px_per_mm
-        sh = self.template.sticker_h_mm * px_per_mm
-        bg = QGraphicsRectItem(0, 0, sw, sh)
+
+        # Determine paper dimensions
+        if self.layout:
+            paper_w = self.layout.paper_w_mm
+            paper_h = self.layout.paper_h_mm
+        else:
+            paper_w = self.template.sticker_w_mm
+            paper_h = self.template.sticker_h_mm
+
+        pw = paper_w * px_per_mm
+        ph = paper_h * px_per_mm
+
+        # White paper background
+        bg = QGraphicsRectItem(0, 0, pw, ph)
         bg.setBrush(QColor('#FFFFFF'))
         bg.setPen(QPen(QColor('#000000'), 0.5))
-        bg.setZValue(-1)
+        bg.setZValue(-2)
         self.addItem(bg)
-        for elem in self.template.elements:
-            item = ElementItem(elem, self.mm_per_px, self)
-            item.setZValue(1)
-            self.addItem(item)
-        self.setSceneRect(0, 0, sw, sh)
+
+        # Draw all sticker slots (non-interactive, just visual)
+        if self.layout:
+            from core.layouts import sticker_positions, total_slots
+            slots = sticker_positions(self.layout)
+            n_slots = total_slots(self.layout)
+            n_items = min(len(self.sample_data_list) if hasattr(self, 'sample_data_list') else 1, n_slots)
+        else:
+            slots = [(0, 0)]
+            n_slots = 1
+            n_items = 1
+
+        # Draw sticker slot outlines
+        for idx, (sx, sy) in enumerate(slots):
+            slot_w = self.template.sticker_w_mm * px_per_mm
+            slot_h = self.template.sticker_h_mm * px_per_mm
+            slot_rect = QGraphicsRectItem(
+                sx * px_per_mm, sy * px_per_mm,
+                slot_w, slot_h
+            )
+            slot_rect.setPen(QPen(QColor('#cccccc'), 0.5, Qt.DashLine))
+            slot_rect.setBrush(QBrush(Qt.NoBrush))
+            slot_rect.setZValue(-1)
+            self.addItem(slot_rect)
+
+            # For the first slot, add editable ElementItems
+            # For other slots, draw static previews (non-interactive)
+            if idx == 0:
+                # Add interactive ElementItems on the first slot
+                # Pass slot offset so element positions are correct in scene
+                for elem in self.template.elements:
+                    item = ElementItem(elem, self.mm_per_px, self,
+                                       slot_x=sx, slot_y=sy)
+                    item.setZValue(1)
+                    self.addItem(item)
+            else:
+                # Draw static preview of other slots
+                # Use a QGraphicsRectItem that renders the sticker content
+                pass  # The first slot's elements are the template — other slots
+                      # will be rendered when printing/previewing via render_preview
+
+        self.setSceneRect(0, 0, pw, ph)
 
     def refresh(self):
         self._build_items()
