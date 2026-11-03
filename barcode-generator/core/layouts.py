@@ -186,6 +186,27 @@ LABEL_PRESETS = {
         sticker_w_mm=98.6, sticker_h_mm=149.4,
         cols=1, rows=1, is_label=True,
     ),
+
+    # ---------- Speed-X SP 700U specific presets ----------
+    # Full sheet: 110×25mm with 3 stickers of 32×25mm in one row
+    # Math: 2 + 32 + 5 + 32 + 5 + 32 + 2 = 110 ✓
+    'SPEEDX-110x25-3up': StickerLayout(
+        name='★ [Speed-X SP 700U] 110×25 mm sheet — 3 stickers per row (32×25 each)',
+        paper_w_mm=110, paper_h_mm=25,
+        margin_x_mm=2.0, margin_y_mm=0.0,
+        gap_x_mm=5.0, gap_y_mm=0.0,
+        sticker_w_mm=32, sticker_h_mm=25,
+        cols=3, rows=1, is_label=True,
+    ),
+    # Single sticker: 32×25mm
+    'SPEEDX-32x25': StickerLayout(
+        name='★ [Speed-X SP 700U] 32×25 mm — single sticker',
+        paper_w_mm=32, paper_h_mm=25,
+        margin_x_mm=0.5, margin_y_mm=0.5,
+        gap_x_mm=0, gap_y_mm=0,
+        sticker_w_mm=31, sticker_h_mm=24,
+        cols=1, rows=1, is_label=True,
+    ),
 }
 
 

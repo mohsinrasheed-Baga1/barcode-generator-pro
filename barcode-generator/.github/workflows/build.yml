@@ -129,63 +129,54 @@ jobs:
             - **BarcodeGeneratorPro_Setup.exe** — Windows installer (recommended)
             - **BarcodeGeneratorPro.exe** — Standalone executable (no install needed)
 
-            ### What's new in v2.2.0
+            ### What's new in v2.3.0
 
-            #### 🖌️ Illustrator-like interactive editor
-            - Each element on the canvas now has 9 handles:
-              * 4 corner handles (top-left, top-right, bottom-left, bottom-right) — resize both dimensions
-              * 4 edge handles (top, bottom, left, right) — resize one dimension
-              * 1 rotate handle above the top edge — rotate to any angle
-            - Drag the body to move (cursor: SizeAllCursor)
-            - Drag any corner to resize (cursor: SizeFDiagCursor / SizeBDiagCursor)
-            - Drag edges to resize one dimension (cursor: SizeHorCursor / SizeVerCursor)
-            - Drag rotate handle to rotate (cursor: CrossCursor)
-            - Cursor changes on hover to indicate what action is available
-            - Resize respects the opposite corner/edge — it stays fixed during resize
-            - Rotation is preserved during resize
+            #### 🏷 Speed-X SP 700U presets
+            - **110×25 mm sheet (3 stickers per row)** — prints 3 stickers of 32×25mm each on one 110×25mm label
+              * Layout: [32mm sticker] [5mm gap] [32mm sticker] [5mm gap] [32mm sticker]
+              * Total: 2 + 32 + 5 + 32 + 5 + 32 + 2 = 110mm ✓
+            - **32×25 mm single sticker** — for printing one sticker at a time
+            - Both presets marked with ★ in the dropdown for easy identification
 
-            #### 📱 Responsive UI (fixes "size distributed" issue)
-            - Window now uses QSplitter — user can drag the divider to resize panels
-            - Both left (input form) and right (preview) panels are in scroll areas
-            - Minimum window size 900x600 — UI works on small screens too
-            - On small screens, panels scroll instead of getting squished
-            - On large screens, panels expand to fill space
-            - Fixed the issue where UI looked "distributed/broken" on smaller screens
+            #### 📊 CRITICAL FIX: Barcode not visible
+            - **Root cause:** `module_width` and `module_height` were being passed
+              to python-barcode in **device pixels** instead of **millimeters**.
+              python-barcode expects these in mm, so the barcode was being
+              generated at the wrong physical size, causing it to either
+              not show or render incorrectly.
+            - **Fix:** Now using `elem.w_mm` and `elem.h_mm` (the element's
+              physical dimensions in mm) to compute module dimensions:
+              * `module_w_mm = (elem.w_mm * 0.95) / 113` (113 = EAN-13 modules)
+              * `module_h_mm = elem.h_mm * 0.75`
+            - Barcode is now correctly sized and visible on all sticker sizes.
 
-            #### 🎯 Better element selection
-            - Click on any element to select it
-            - Handles become visible only when selected (clean canvas otherwise)
-            - Selection border is solid blue; unselected is dashed gray
-            - Line from top edge to rotate handle for clear visibility
-
-            #### ⌨️ Keyboard shortcuts
-            - Arrow keys: nudge selected element 1mm
-            - Shift + Arrow: nudge 0.1mm (fine control)
-            - Delete / Backspace: disable selected element
+            #### 📊 Barcode error display
+            - If barcode generation fails (e.g., invalid digits), the error
+              message is now displayed on the sticker instead of silently
+              showing nothing.
 
             #### Earlier features (still included)
+            - 🖌️ Illustrator-like editor (9 handles: 4 corners + 4 edges + 1 rotate)
+            - 📱 Responsive UI (QSplitter + scrollable panels)
             - 🖼 Logo support (PNG/JPEG/BMP/GIF)
             - ✏ Inline editor (no separate dialog)
             - 🖨 Beautiful gradient Print button (orange/red)
             - ⚡ Quick Print button (green)
             - 📄 Save as PDF button (amber)
             - 🔍 Zoom controls (In/Out/Actual Size/Fit)
-            - 📐 Preview at actual sticker size
-            - 📊 Barcode displays fully in preview
             - Custom Print Setup Dialog with printer list + match indicator
             - Test Print button (print 1 label as test)
             - setFullPage(True) for proper label printing
-            - 13 preset label sizes (mm + inches), including 1.5×1 inch
+            - 15 preset label sizes (mm + inches + Speed-X SP 700U)
             - mm / inches unit toggle
             - Per-element font family, size, bold, italic, color, alignment
             - EAN-13 barcode generator
             - Sheet printer mode (A4 — 40/24/80/12 stickers per sheet)
-            - Label printer mode (Zebra, TSC, Xprinter, Godex, Rongta)
+            - Label printer mode (Zebra, TSC, Xprinter, Godex, Rongta, Speed-X)
             - Company name, product name, product code, Mfg/Exp dates, mobile
             - Bulk CSV import
             - SQLite history (search + reuse)
             - Bilingual UI (English + Urdu)
-            - Import audit test (prevents 'X is not defined' bugs)
 
             See `README.txt` in the repo for full instructions.
           draft: false

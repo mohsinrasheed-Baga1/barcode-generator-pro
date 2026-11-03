@@ -107,29 +107,34 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
             painter.restore()
             return
         try:
-            # Generate barcode scaled to fit the element rect exactly.
-            # Use a reasonable module width based on the rect width,
-            # so the entire barcode is visible (Width bounding, not stretched).
+            # Generate barcode at the correct PHYSICAL size (in mm),
+            # NOT in pixels. python-barcode's module_width and module_height
+            # are in millimeters.
             # EAN-13 has 113 modules total (95 bars + 18 guard/quiet).
-            # We compute module_width so that 113 modules fit in ~95% of rect width.
-            num_modules = 113  # EAN-13 total modules
-            module_w = (w_px * 0.95) / num_modules
-            # Module height: use full element height (digits will overlay)
-            module_h = h_px * 0.75
+            # We compute module_width (mm) so 113 modules fit in ~95% of
+            # the element's physical width.
+            num_modules = 113
+            module_w_mm = (elem.w_mm * 0.95) / num_modules
+            # Module height: use 75% of element's physical height
+            module_h_mm = elem.h_mm * 0.75
             img, full_code = generate_ean13_image(
                 bc,
-                module_width=module_w,
-                module_height=module_h,
+                module_width=module_w_mm,
+                module_height=module_h_mm,
             )
-            # The generated image may be slightly larger or smaller than rect.
-            # Use KeepAspectRatio to ensure full barcode visible, centered.
+            # Scale the generated image to fit the element rect in device
+            # pixels. KeepAspectRatio ensures the full barcode is visible.
             scaled = img.scaled(int(w_px * 0.98), int(h_px * 0.95),
                                 Qt.KeepAspectRatio, Qt.SmoothTransformation)
             tx = x_px + (w_px - scaled.width()) / 2
             ty = y_px + (h_px - scaled.height()) / 2
             painter.drawImage(QPointF(tx, ty), scaled)
-        except Exception:
-            pass
+        except Exception as e:
+            # Draw error text so the user knows what went wrong
+            painter.setPen(QColor('#c62828'))
+            painter.setFont(QFont('Arial', max(5, int(h_px / 8))))
+            painter.drawText(rect, Qt.AlignCenter | Qt.TextDontClip,
+                             f"Barcode error: {e}")
     # ---------- Text element ----------
     else:
         text = get_text_for_element(elem.id, data)
@@ -206,22 +211,25 @@ def _draw_element_at_origin(painter: QPainter, elem: StickerElement,
             try:
                 w_px = local_rect.width()
                 h_px = local_rect.height()
-                # Same logic as _draw_element — fit 113 modules in 95% of width
+                # Use mm for module dimensions (not px) — same fix as _draw_element
                 num_modules = 113
-                module_w = (w_px * 0.95) / num_modules
-                module_h = h_px * 0.75
+                module_w_mm = (elem.w_mm * 0.95) / num_modules
+                module_h_mm = elem.h_mm * 0.75
                 img, full_code = generate_ean13_image(
                     bc,
-                    module_width=module_w,
-                    module_height=module_h,
+                    module_width=module_w_mm,
+                    module_height=module_h_mm,
                 )
                 scaled = img.scaled(int(w_px * 0.98), int(h_px * 0.95),
                                     Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 tx = local_rect.left() + (w_px - scaled.width()) / 2
                 ty = local_rect.top() + (h_px - scaled.height()) / 2
                 painter.drawImage(QPointF(tx, ty), scaled)
-            except Exception:
-                pass
+            except Exception as e:
+                painter.setPen(QColor('#c62828'))
+                painter.setFont(QFont('Arial', max(5, int(h_px / 8))))
+                painter.drawText(local_rect, Qt.AlignCenter | Qt.TextDontClip,
+                                 f"Barcode error: {e}")
     # ---------- Text element ----------
     else:
         text = get_text_for_element(elem.id, data)

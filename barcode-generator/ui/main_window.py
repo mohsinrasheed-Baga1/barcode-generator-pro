@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 
 class MainWindow(QMainWindow):
