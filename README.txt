@@ -1,25 +1,47 @@
 ============================================================
-  BARCODE GENERATOR PRO  (EAN-13)  —  v2.2.0
+  BARCODE GENERATOR PRO  (EAN-13)  —  v2.3.0
   بارکوڈ جنریٹر پرو
 ============================================================
 
-نئے فیچرز (v2.2.0):
-  ✔ 🖌️ Illustrator-like editor — corners سے drag کر کے resize،
-    rotate handle سے rotate، body drag سے move — سب کچھ canvas پر
-  ✔ 📱 Responsive UI — چھوٹی یا بڑی screen پر درست دکھائی دے،
-    distribute نہیں ہوگا (QSplitter + scrollable panels)
-  ✔ 🎯 9 handles ہر element پر: 8 resize (corners + edges) + 1 rotate
-  ✔ 🖱️ Cursor feedback — corner پر SizeFDiagCursor، rotate پر
-    CrossCursor، body پر SizeAllCursor
-  ✔ ⌨️ Arrow keys نولہ nudge (1mm / Shift=0.1mm) + Delete disable
+نئے فیچرز (v2.3.0):
+  ✔ 🏷 Speed-X SP 700U presets شامل:
+    • 110×25 mm sheet (3 stickers per row, each 32×25 mm)
+    • 32×25 mm single sticker
+  ✔ 📊 Barcode visibility fix — module dimensions اب mm میں
+    convert ہوتے ہیں (پہلے px تھے، جس سے barcode غلط سائز میں
+    render ہوتا تھا یا نظر نہیں آتا تھا)
+  ✔ 📊 Barcode error display — اگر barcode generate نہ ہو سکے
+    تو error message sticker پر دکھائی دے گا
 
-پرانے فیچرز (v2.1.0):
-  ✔ 🖼 Logo add کا option
-  ✔ ✏ Inline editor (no separate dialog)
-  ✔ 🖨 Beautiful gradient Print button
-  ✔ 🔍 Zoom controls (Zoom In/Out/Actual Size/Fit)
-  ✔ 📐 Preview actual sticker size
-  ✔ 📊 Barcode پورا دکھائی دیتا ہے
+پرانے فیچرز (v2.2.0):
+  ✔ Illustrator-like editor (9 handles + cursor feedback)
+  ✔ Responsive UI (QSplitter + scrollable panels)
+
+------------------------------------------------------------
+ Speed-X SP 700U پرنٹر کے لیے استعمال
+------------------------------------------------------------
+
+  آپ کے پرنٹر کے لیے دو presets تیار ہیں:
+
+  1. "★ [Speed-X SP 700U] 110×25 mm sheet — 3 stickers per row"
+     • Sheet size: 110×25 mm
+     • 3 stickers per sheet, each 32×25 mm
+     • Layout: [32mm] [5mm gap] [32mm] [5mm gap] [32mm]
+     • استعمال: جب ایک ساتھ 3 stickers پرنٹ کرنا ہوں
+
+  2. "★ [Speed-X SP 700U] 32×25 mm — single sticker"
+     • Sticker size: 32×25 mm
+     • استعمال: جب ایک وقت میں ایک sticker پرنٹ کرنا ہو
+
+  طریقہ:
+    1. Layout dropdown میں سے appropriate preset select کریں
+    2. اپنا data enter کریں
+    3. "Add to Sheet" دبائیں (3-up کے لیے 3 items add کریں)
+    4. "🖨 Print" دبائیں
+    5. Print Setup dialog میں Speed-X SP 700U select کریں
+    6. "⚙ Printer Properties" میں label size وہی set کریں
+       (110×25 mm یا 32×25 mm، preset کے مطابق)
+    7. Print دبائیں
 
 پرانے فیچرز (v2.0.1):
   ✔ Drag bug fix — ہر عنصر کو مکمل drag کریں، جتنا چاہیں
