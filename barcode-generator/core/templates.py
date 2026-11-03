@@ -64,13 +64,21 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_logo: bool = False) -> StickerTemplate:
     """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
+    # Scale font sizes based on sticker size
     company_pt = max(4.0, min(14.0, base_h * 0.18))
     body_pt    = max(3.0, min(11.0, base_h * 0.14))
     small_pt   = max(3.0, min(10.0, base_h * 0.12))
     barcode_pt = max(3.0, min(11.0, base_h * 0.13))
 
-    barcode_h = base_h * 0.35
-    barcode_digit_h = base_h * 0.08
+    # Element heights as fraction of sticker height — compact layout
+    # that fits within the sticker boundary even for small stickers (25mm)
+    barcode_h = base_h * 0.35       # barcode bars
+    barcode_digit_h = base_h * 0.08  # digits below barcode
+    company_h = base_h * 0.15
+    product_h = base_h * 0.10
+    code_h = base_h * 0.10
+    dates_h = base_h * 0.08
+    mobile_h = base_h * 0.08
 
     elements: List[StickerElement] = []
     y = 0.5
@@ -96,13 +104,13 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             enabled=True,
             x_mm=0.5, y_mm=y,
             w_mm=sticker_w_mm - 1.0,
-            h_mm=base_h * 0.18,
+            h_mm=company_h,
             font_family='Arial',
             font_size_pt=company_pt,
             bold=True,
             align='center',
         ))
-        y += base_h * 0.18
+        y += company_h
 
     if include_product_name:
         elements.append(StickerElement(
@@ -111,13 +119,13 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             enabled=True,
             x_mm=0.5, y_mm=y,
             w_mm=sticker_w_mm - 1.0,
-            h_mm=base_h * 0.13,
+            h_mm=product_h,
             font_family='Arial',
             font_size_pt=body_pt,
             bold=False,
             align='center',
         ))
-        y += base_h * 0.13
+        y += product_h
 
     if include_barcode:
         elements.append(StickerElement(
@@ -151,13 +159,13 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             enabled=True,
             x_mm=0.5, y_mm=y,
             w_mm=sticker_w_mm - 1.0,
-            h_mm=base_h * 0.13,
+            h_mm=code_h,
             font_family='Arial',
             font_size_pt=body_pt,
             bold=False,
             align='center',
         ))
-        y += base_h * 0.13
+        y += code_h
 
     if include_dates:
         elements.append(StickerElement(
@@ -166,13 +174,13 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             enabled=True,
             x_mm=0.5, y_mm=y,
             w_mm=sticker_w_mm - 1.0,
-            h_mm=base_h * 0.12,
+            h_mm=dates_h,
             font_family='Arial',
             font_size_pt=small_pt,
             bold=False,
             align='center',
         ))
-        y += base_h * 0.12
+        y += dates_h
 
     if include_mobile:
         elements.append(StickerElement(
@@ -181,13 +189,13 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             enabled=True,
             x_mm=0.5, y_mm=y,
             w_mm=sticker_w_mm - 1.0,
-            h_mm=base_h * 0.12,
+            h_mm=mobile_h,
             font_family='Arial',
             font_size_pt=small_pt,
             bold=False,
             align='center',
         ))
-        y += base_h * 0.12
+        y += mobile_h
 
     return StickerTemplate(
         name='Default',
