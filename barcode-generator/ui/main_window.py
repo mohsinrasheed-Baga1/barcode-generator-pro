@@ -43,11 +43,11 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
-    """QGraphicsView with mouse wheel zoom support."""
+    """QGraphicsView with direct mouse wheel zoom (no Ctrl needed)."""
     def __init__(self, scene=None, parent=None):
         super().__init__(scene, parent)
         self.setRenderHint(QPainter.Antialiasing, True)
@@ -55,37 +55,13 @@ class ZoomableGraphicsView(QGraphicsView):
         self._zoom_factor = 1.0
 
     def wheelEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier:
-            # Ctrl+wheel = zoom
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self.scale(1.15, 1.15)
-            else:
-                self.scale(1/1.15, 1/1.15)
-            event.accept()
+        # Direct wheel zoom — no Ctrl modifier needed
+        delta = event.angleDelta().y()
+        if delta > 0:
+            self.scale(1.15, 1.15)
         else:
-            super().wheelEvent(event)
-
-
-class ZoomableScrollArea(QScrollArea):
-    """QScrollArea that supports Ctrl+wheel zoom for the preview pixmap."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._main_window = None
-
-    def set_main_window(self, mw):
-        self._main_window = mw
-
-    def wheelEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier and self._main_window:
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self._main_window.on_zoom_in()
-            else:
-                self._main_window.on_zoom_out()
-            event.accept()
-        else:
-            super().wheelEvent(event)
+            self.scale(1/1.15, 1/1.15)
+        event.accept()
 
 
 class MainWindow(QMainWindow):
@@ -190,6 +166,15 @@ class MainWindow(QMainWindow):
         self.mobile_edit.setText(self.default_mobile)
         form.addRow("Mobile / موبائل:", self.mobile_edit)
 
+        # Price field + Include Price checkbox
+        self.price_edit = QLineEdit()
+        self.price_edit.setPlaceholderText("e.g. 150 or Rs. 150")
+        form.addRow("Price / قیمت:", self.price_edit)
+        self.price_enabled_chk = QCheckBox("Include Price / قیمت شامل کریں")
+        self.price_enabled_chk.setChecked(False)
+        self.price_enabled_chk.toggled.connect(self.on_price_enabled_toggled)
+        form.addRow("", self.price_enabled_chk)
+
         left_layout.addWidget(form_box)
 
         qty_row = QHBoxLayout()
@@ -273,15 +258,8 @@ class MainWindow(QMainWindow):
         logo_row.addWidget(self.remove_logo_btn)
         left_layout.addLayout(logo_row)
 
-        # Edit mode toggle button — toggles inline editor in preview area
-        self.edit_mode_btn = QPushButton("✏ Edit Layout (inline) / ایڈٹ موڈ")
-        self.edit_mode_btn.setCheckable(True)
-        self.edit_mode_btn.setStyleSheet(
-            "padding: 8px; font-weight: bold; "
-            "background: #e8eaf6; color: #283593; border: 1px solid #283593;"
-        )
-        self.edit_mode_btn.toggled.connect(self.on_edit_mode_toggled)
-        left_layout.addWidget(self.edit_mode_btn)
+        # Edit mode is now ALWAYS ON — preview is always interactive
+        # No toggle button needed (Canva-like behavior)
 
         # Print buttons — three options (Print button is prominent)
         print_row = QHBoxLayout()
@@ -401,8 +379,7 @@ class MainWindow(QMainWindow):
         self.preview_stack = QStackedWidget()
 
         # ----- Index 0: Static preview (QLabel in scroll area) -----
-        self.preview_scroll = ZoomableScrollArea()
-        self.preview_scroll.set_main_window(self)
+        self.preview_scroll = QScrollArea()
         self.preview_scroll.setWidgetResizable(True)
         self.preview_scroll.setAlignment(Qt.AlignCenter)
         self.preview_scroll.setBackgroundRole(QPalette.Mid)
@@ -451,9 +428,9 @@ class MainWindow(QMainWindow):
         del_row.addWidget(self.del_all_btn)
         right_layout.addLayout(del_row)
 
-        # ----- Properties panel (shown only when edit mode is on) -----
+        # ----- Properties panel (always visible — Canva-like) -----
         self.props_panel = QGroupBox("Element Properties / عنصر کی خصوصیات")
-        self.props_panel.setVisible(False)
+        self.props_panel.setVisible(True)
         pp_layout = QVBoxLayout(self.props_panel)
 
         # Element selector
@@ -585,6 +562,14 @@ class MainWindow(QMainWindow):
         self._build_statusbar()
         self._update_layout_info()
 
+        # Initialize the inline editor immediately (always interactive)
+        self._init_inline_editor()
+        self._populate_elem_combo()
+        # Show editor view (index 1) by default
+        if self.editor_view:
+            self.preview_stack.setCurrentIndex(1)
+            QTimer.singleShot(50, self._fit_editor_view)
+
     def _build_statusbar(self):
         sb = QStatusBar()
         self.setStatusBar(sb)
@@ -614,6 +599,36 @@ class MainWindow(QMainWindow):
         self._refresh_preview()
         self._update_statusbar()
 
+    def on_price_enabled_toggled(self, checked: bool):
+        # Enable/disable price element in template
+        for e in self.template.elements:
+            if e.id == 'price':
+                e.enabled = bool(checked)
+                break
+        else:
+            # Price element doesn't exist — add it
+            if checked:
+                from core.templates import StickerElement
+                lay = self._current_layout()
+                price_h = lay.sticker_h_mm * 0.12
+                price_pt = max(4.0, min(14.0, lay.sticker_h_mm * 0.16))
+                self.template.elements.append(StickerElement(
+                    id='price',
+                    label='Price / قیمت',
+                    enabled=True,
+                    x_mm=0.5, y_mm=lay.sticker_h_mm - price_h - 0.5,
+                    w_mm=lay.sticker_w_mm - 1.0,
+                    h_mm=price_h,
+                    font_family='Arial',
+                    font_size_pt=price_pt,
+                    bold=True,
+                    align='center',
+                    color='#c62828',
+                ))
+        self.price_edit.setEnabled(checked)
+        self._refresh_preview()
+        self._update_statusbar()
+
     # ----------------------------------------------------- event handlers
     def on_add_clicked(self):
         if self.barcode_enabled_chk.isChecked():
@@ -640,6 +655,7 @@ class MainWindow(QMainWindow):
             'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
             'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
             'mobile': self.mobile_edit.text().strip(),
+            'price': self.price_edit.text().strip() if self.price_enabled_chk.isChecked() else '',
         }
         try:
             self.db.save_barcode(data)
@@ -756,9 +772,11 @@ class MainWindow(QMainWindow):
             # Now we regenerate the template with proper positions for the new size.
             # Preserve barcode enabled/disabled state from Include Barcode checkbox.
             include_barcode = self.barcode_enabled_chk.isChecked() if hasattr(self, 'barcode_enabled_chk') else True
+            include_price = self.price_enabled_chk.isChecked() if hasattr(self, 'price_enabled_chk') else False
             self.template = default_template(
                 lay.sticker_w_mm, lay.sticker_h_mm,
                 include_barcode=include_barcode,
+                include_price=include_price,
             )
             self.db.set_setting('sticker_template_json', template_to_json(self.template))
         self._update_layout_info()
@@ -790,18 +808,17 @@ class MainWindow(QMainWindow):
             return
         lay = self._current_layout()
         try:
-            # Render at higher DPI for crisp preview (we'll zoom programmatically)
-            # 200 DPI gives good balance between quality and size
+            # Render the static pixmap (for PDF preview / fallback)
             pix = render_preview(lay, self.current_items, self.template, dpi=200)
             self._preview_base_pixmap = pix
-            # Apply current zoom (default 1.0)
             if not hasattr(self, '_preview_zoom'):
                 self._preview_zoom = 1.0
-            # Display at actual screen size — the preview_label will scale
-            # automatically based on its sizeHint. We use scaled pixmap.
             self._apply_preview_zoom()
         except Exception as e:
             self.preview_label.setText(f"Preview error:\n{e}")
+        # Also refresh the interactive editor scene
+        if hasattr(self, '_editor_initialized') and self._editor_initialized:
+            self._refresh_editor()
 
         n = len(self.current_items)
         per_sheet = total_slots(lay)
@@ -1094,48 +1111,10 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save PDF:\n{e}")
 
-    # ----------------------------------------------- sticker editor (INLINE)
+    # ----------------------------------------------- sticker editor (INLINE — always on)
     def on_edit_layout_clicked(self):
-        """Legacy — now just toggles the inline edit mode."""
-        self.edit_mode_btn.toggle()
-
-    def on_edit_mode_toggled(self, checked: bool):
-        """Toggle inline editor in the preview area."""
-        if checked:
-            # Switching to edit mode
-            self.preview_label_title.setText("✏ Edit Mode — Click an element, drag to move / ایڈٹ موڈ")
-            self.preview_label_title.setStyleSheet(
-                "font-size: 13px; font-weight: bold; color: #b85c00; padding: 4px;"
-            )
-            self.edit_mode_btn.setStyleSheet(
-                "padding: 8px; font-weight: bold; "
-                "background: #ff7043; color: white; border: 1px solid #d84315;"
-            )
-            self.edit_mode_btn.setText("✓ Done Editing / مکمل ہو گیا")
-            # Initialize editor if not done yet
-            self._init_inline_editor()
-            self.props_panel.setVisible(True)
-            self.preview_stack.setCurrentIndex(1 if self.editor_view else 0)
-            self._refresh_editor()
-            self._populate_elem_combo()
-        else:
-            # Switching back to preview mode
-            self.preview_label_title.setText("Sheet Preview / شیٹ پریویو")
-            self.preview_label_title.setStyleSheet(
-                "font-size: 13px; font-weight: bold; color: #1a4d8f; padding: 4px;"
-            )
-            self.edit_mode_btn.setStyleSheet(
-                "padding: 8px; font-weight: bold; "
-                "background: #e8eaf6; color: #283593; border: 1px solid #283593;"
-            )
-            self.edit_mode_btn.setText("✏ Edit Layout (inline) / ایڈٹ موڈ")
-            self.props_panel.setVisible(False)
-            self.preview_stack.setCurrentIndex(0)
-            # Save the template
-            self.db.set_setting('sticker_template_json',
-                                template_to_json(self.template))
-            self._refresh_preview()
-            self._update_statusbar()
+        """Refresh the editor view."""
+        self._refresh_editor()
 
     def _init_inline_editor(self):
         """Lazily initialize the QGraphicsScene + QGraphicsView for inline editor."""
@@ -1460,7 +1439,7 @@ class MainWindow(QMainWindow):
                                 template_to_json(self.template))
             self._refresh_preview()
             # If we're in edit mode, refresh editor + combo
-            if self.edit_mode_btn.isChecked():
+            if True:
                 self._refresh_editor()
                 self._populate_elem_combo()
             QMessageBox.information(self, "Logo Added",
@@ -1477,7 +1456,7 @@ class MainWindow(QMainWindow):
                 self.db.set_setting('sticker_template_json',
                                     template_to_json(self.template))
                 self._refresh_preview()
-                if self.edit_mode_btn.isChecked():
+                if True:
                     self._refresh_editor()
                     self._populate_elem_combo()
                 QMessageBox.information(self, "Logo Removed",

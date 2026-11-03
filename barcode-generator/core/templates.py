@@ -61,7 +61,8 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_dates: bool = True,
                      include_mobile: bool = True,
                      include_company: bool = True,
-                     include_logo: bool = False) -> StickerTemplate:
+                     include_logo: bool = False,
+                     include_price: bool = False) -> StickerTemplate:
     """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
     # Scale font sizes based on sticker size
@@ -79,6 +80,7 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
     code_h = base_h * 0.10
     dates_h = base_h * 0.08
     mobile_h = base_h * 0.08
+    price_h = base_h * 0.12  # price element
 
     elements: List[StickerElement] = []
     y = 0.5
@@ -197,6 +199,24 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         ))
         y += mobile_h
 
+    if include_price:
+        # Price — bold, prominent, right-aligned
+        price_pt = max(4.0, min(14.0, base_h * 0.16))
+        elements.append(StickerElement(
+            id='price',
+            label='Price / قیمت',
+            enabled=True,
+            x_mm=0.5, y_mm=y,
+            w_mm=sticker_w_mm - 1.0,
+            h_mm=price_h,
+            font_family='Arial',
+            font_size_pt=price_pt,
+            bold=True,
+            align='center',
+            color='#c62828',  # red color for price
+        ))
+        y += price_h
+
     return StickerTemplate(
         name='Default',
         sticker_w_mm=sticker_w_mm,
@@ -257,6 +277,16 @@ def get_text_for_element(element_id: str, data: dict) -> str:
     if element_id == 'mobile':
         m = data.get('mobile', '')
         return f"Contact: {m}" if m else ''
+    if element_id == 'price':
+        p = data.get('price', '')
+        if not p:
+            return ''
+        # Format: if it's a number, prefix with Rs.
+        try:
+            float(p)
+            return f"Rs. {p}"
+        except ValueError:
+            return p
     return ''
 
 
