@@ -43,32 +43,52 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.7.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
-    """QGraphicsView with direct mouse wheel zoom toward cursor (Canva-like)."""
+    """QGraphicsView with direct mouse wheel zoom toward cursor (Canva-like).
+    Zoom is limited to 10%-500% to prevent elements from disappearing."""
+    MIN_ZOOM = 0.10  # 10% — don't zoom out further than this
+    MAX_ZOOM = 5.0   # 500% — don't zoom in further than this
+
     def __init__(self, scene=None, parent=None):
         super().__init__(scene, parent)
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setDragMode(QGraphicsView.RubberBandDrag)
-        self._zoom_factor = 1.0
+        self._total_zoom = 1.0
 
     def wheelEvent(self, event):
         # Zoom toward cursor position (like Canva/Photoshop)
-        # Save the scene point under the cursor before zoom
         cursor_scene_pos = self.mapToScene(event.pos())
-        # Apply zoom
         delta = event.angleDelta().y()
         factor = 1.15 if delta > 0 else 1/1.15
+        # Check zoom limits BEFORE applying
+        new_zoom = self._total_zoom * factor
+        if new_zoom < self.MIN_ZOOM:
+            factor = self.MIN_ZOOM / self._total_zoom
+            if factor >= 1.0:
+                return  # already at min
+        elif new_zoom > self.MAX_ZOOM:
+            factor = self.MAX_ZOOM / self._total_zoom
+            if factor <= 1.0:
+                return  # already at max
+        self._total_zoom *= factor
         self.scale(factor, factor)
-        # After zoom, the scene point under the cursor has changed.
-        # Translate the view to keep the cursor point stable.
+        # Keep cursor position stable
         new_cursor_scene_pos = self.mapToScene(event.pos())
         dx = new_cursor_scene_pos.x() - cursor_scene_pos.x()
         dy = new_cursor_scene_pos.y() - cursor_scene_pos.y()
         self.translate(dx, dy)
         event.accept()
+
+    def reset_zoom(self):
+        """Reset zoom to 100% and center on scene."""
+        self.resetTransform()
+        self._total_zoom = 1.0
+        self.fitInView(self.scene().sceneRect(), Qt.KeepAspectRatio)
+        # Recalculate total_zoom after fitInView
+        self._total_zoom = self.transform().m11()
 
 
 class MainWindow(QMainWindow):
