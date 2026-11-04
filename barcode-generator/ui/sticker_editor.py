@@ -24,8 +24,8 @@ from PyQt5.QtWidgets import (
     QComboBox, QPushButton, QGroupBox, QSplitter, QMessageBox, QListWidget,
     QListWidgetItem, QFrame, QSizePolicy, QScrollArea, QSlider, QTabWidget,
     QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem,
-    QGraphicsEllipseItem, QGraphicsTextItem, QColorDialog,
-    QToolTip, QApplication
+    QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsPixmapItem,
+    QColorDialog, QToolTip, QApplication
 )
 
 from core.templates import (StickerTemplate, StickerElement,
@@ -505,45 +505,65 @@ class StickerScene(QGraphicsScene):
         bg.setZValue(-2)
         self.addItem(bg)
 
-        # Draw all sticker slots (non-interactive, just visual)
+        # Draw all sticker slots
         if self.layout:
             from core.layouts import sticker_positions, total_slots
             slots = sticker_positions(self.layout)
             n_slots = total_slots(self.layout)
-            n_items = min(len(self.sample_data_list) if hasattr(self, 'sample_data_list') else 1, n_slots)
         else:
             slots = [(0, 0)]
             n_slots = 1
-            n_items = 1
 
-        # Draw sticker slot outlines
         for idx, (sx, sy) in enumerate(slots):
-            slot_w = self.template.sticker_w_mm * px_per_mm
-            slot_h = self.template.sticker_h_mm * px_per_mm
-            slot_rect = QGraphicsRectItem(
-                sx * px_per_mm, sy * px_per_mm,
-                slot_w, slot_h
-            )
+            slot_w_px = self.template.sticker_w_mm * px_per_mm
+            slot_h_px = self.template.sticker_h_mm * px_per_mm
+            slot_x_px = sx * px_per_mm
+            slot_y_px = sy * px_per_mm
+
+            # Slot outline (dashed)
+            slot_rect = QGraphicsRectItem(slot_x_px, slot_y_px,
+                                           slot_w_px, slot_h_px)
             slot_rect.setPen(QPen(QColor('#cccccc'), 0.5, Qt.DashLine))
             slot_rect.setBrush(QBrush(Qt.NoBrush))
             slot_rect.setZValue(-1)
             self.addItem(slot_rect)
 
-            # For the first slot, add editable ElementItems
-            # For other slots, draw static previews (non-interactive)
             if idx == 0:
-                # Add interactive ElementItems on the first slot
-                # Pass slot offset so element positions are correct in scene
+                # First slot: add INTERACTIVE ElementItems (editable)
                 for elem in self.template.elements:
                     item = ElementItem(elem, self.mm_per_px, self,
                                        slot_x=sx, slot_y=sy)
-                    item.setZValue(1)
+                    item.setZValue(10)
                     self.addItem(item)
             else:
-                # Draw static preview of other slots
-                # Use a QGraphicsRectItem that renders the sticker content
-                pass  # The first slot's elements are the template — other slots
-                      # will be rendered when printing/previewing via render_preview
+                # Other slots: render STATIC preview of sticker content
+                # using draw_sticker_with_template into a QPixmap
+                try:
+                    from core.printer import draw_sticker_with_template
+                    render_dpi = 200
+                    render_scale = render_dpi / 25.4  # px per mm
+                    sticker_w_render = int(self.template.sticker_w_mm * render_scale)
+                    sticker_h_render = int(self.template.sticker_h_mm * render_scale)
+                    pm = QPixmap(sticker_w_render, sticker_h_render)
+                    pm.fill(Qt.transparent)
+                    p = QPainter(pm)
+                    p.setRenderHint(QPainter.Antialiasing, True)
+                    rect = QRectF(0, 0, sticker_w_render, sticker_h_render)
+                    draw_sticker_with_template(p, rect, self.sample_data,
+                                                self.template, render_scale)
+                    p.end()
+                    # Scale pixmap to scene size and position at slot
+                    pix_item = QGraphicsPixmapItem(pm)
+                    # Scale from render resolution to scene resolution
+                    scene_scale = px_per_mm / render_scale
+                    pix_item.setScale(scene_scale)
+                    pix_item.setPos(slot_x_px, slot_y_px)
+                    pix_item.setZValue(5)  # above outlines, below interactive elements
+                    pix_item.setFlag(QGraphicsItem.ItemIsSelectable, False)
+                    pix_item.setFlag(QGraphicsItem.ItemIsMovable, False)
+                    self.addItem(pix_item)
+                except Exception:
+                    pass  # If rendering fails, just show the outline
 
         self.setSceneRect(0, 0, pw, ph)
 
