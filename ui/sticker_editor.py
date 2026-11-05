@@ -540,8 +540,9 @@ class StickerScene(QGraphicsScene):
                 # using draw_sticker_with_template into a QPixmap
                 try:
                     from core.printer import draw_sticker_with_template
-                    render_dpi = 200
-                    render_scale = render_dpi / 25.4  # px per mm
+                    # Use HIGH DPI for static previews so quality matches first sticker
+                    render_dpi = 300  # was 200 — higher quality for other slots
+                    render_scale = render_dpi / 25.4
                     sticker_w_render = int(self.template.sticker_w_mm * render_scale)
                     sticker_h_render = int(self.template.sticker_h_mm * render_scale)
                     pm = QPixmap(sticker_w_render, sticker_h_render)

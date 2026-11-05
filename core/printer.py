@@ -15,8 +15,8 @@ from PyQt5.QtGui import (QPainter, QPixmap, QImage, QPageSize, QColor,
 from PyQt5.QtPrintSupport import QPrinter
 
 from core.barcode_gen import (make_full_ean13, validate_ean13,
-                                generate_ean13_image, draw_sticker,
-                                make_fonts)
+                                generate_ean13_image, generate_barcode_image,
+                                BARCODE_TYPES)
 from core.layouts import StickerLayout, sticker_positions
 from core.templates import (StickerTemplate, StickerElement,
                               get_text_for_element, enabled_elements)
@@ -117,8 +117,9 @@ def _draw_element(painter: QPainter, elem: StickerElement, data: dict,
             module_w_mm = (elem.w_mm * 0.95) / num_modules
             # Module height: use 75% of element's physical height
             module_h_mm = elem.h_mm * 0.75
-            img, full_code = generate_ean13_image(
+            img, full_code = generate_barcode_image(
                 bc,
+                barcode_type=getattr(elem, 'barcode_type', 'ean13'),
                 module_width=module_w_mm,
                 module_height=module_h_mm,
             )
@@ -215,8 +216,9 @@ def _draw_element_at_origin(painter: QPainter, elem: StickerElement,
                 num_modules = 113
                 module_w_mm = (elem.w_mm * 0.95) / num_modules
                 module_h_mm = elem.h_mm * 0.75
-                img, full_code = generate_ean13_image(
+                img, full_code = generate_barcode_image(
                     bc,
+                    barcode_type=getattr(elem, 'barcode_type', 'ean13'),
                     module_width=module_w_mm,
                     module_height=module_h_mm,
                 )
