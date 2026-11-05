@@ -38,8 +38,8 @@ from core.printer import (draw_sticker_with_template,
 
 
 # Handle size in pixels (rendered as small squares)
-HANDLE_SIZE = 8
-ROTATE_HANDLE_DISTANCE = 24
+HANDLE_SIZE = 6      # was 8 — smaller for less visual clutter
+ROTATE_HANDLE_DISTANCE = 18  # was 24 — closer to element
 
 
 # Handle IDs — 4 corners + 4 edges + rotate
@@ -176,7 +176,7 @@ class ElementItem(QGraphicsRectItem):
         rect = self.rect()
         # Selection border
         if self.isSelected():
-            pen = QPen(QColor('#1a4d8f'), 1.0)
+            pen = QPen(QColor('#1a4d8f'), 0.5)  # thinner border (was 1.0)
             pen.setStyle(Qt.SolidLine)
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
@@ -480,7 +480,7 @@ class StickerScene(QGraphicsScene):
         self.template = template
         self.sample_data = sample_data
         self.layout = layout  # StickerLayout or None
-        self.mm_per_px = 0.25  # 1 px = 0.25 mm
+        self.mm_per_px = 0.15  # was 0.25 — higher resolution (6.67px per mm)
         self._build_items()
 
     def _build_items(self):

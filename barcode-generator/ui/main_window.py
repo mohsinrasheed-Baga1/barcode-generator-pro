@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.8.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -638,7 +638,7 @@ class MainWindow(QMainWindow):
                 from core.templates import StickerElement
                 lay = self._current_layout()
                 price_h = lay.sticker_h_mm * 0.12
-                price_pt = max(4.0, min(14.0, lay.sticker_h_mm * 0.16))
+                price_pt = max(7.0, min(16.0, lay.sticker_h_mm * 0.20))
                 self.template.elements.append(StickerElement(
                     id='price',
                     label='Price / قیمت',
@@ -887,19 +887,51 @@ class MainWindow(QMainWindow):
 
     # ----------------------------------------------- print (CUSTOM DIALOG — FIX)
     def on_print_clicked(self):
-        """Print button — shows custom PrintSetupDialog (no QPrintDialog).
-        This is more reliable in PyInstaller-bundled apps."""
+        """Print button — shows print summary then PrintSetupDialog."""
         if not self.current_items:
             QMessageBox.warning(self, "Empty",
                                 "Please add at least one sticker first.")
             return
         lay = self._current_layout()
 
+        # Print summary dialog — shows count, layout, and order
+        n_items = len(self.current_items)
+        per_sheet = total_slots(lay)
+        n_sheets = (n_items + per_sheet - 1) // per_sheet
+        copies = self.copies_spin.value()
+        total_labels = n_items * copies
+
+        summary = (f"📋 Print Summary / پرنٹ کی تفصیل\n\n"
+                   f"Layout: {lay.name}\n"
+                   f"Sticker size: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm\n"
+                   f"Stickers per sheet: {per_sheet}\n"
+                   f"Items in queue: {n_items}\n"
+                   f"Copies: {copies}\n\n"
+                   f"Sheets to print: {n_sheets}\n"
+                   f"Total labels: {total_labels}\n\n"
+                   f"Item list:\n")
+        for i, item in enumerate(self.current_items[:10]):
+            bc = item.get('barcode', '') or '(no barcode)'
+            pn = item.get('product_name', '') or item.get('company_name', '')
+            summary += f"  {i+1}. {pn} — {bc}\n"
+        if n_items > 10:
+            summary += f"  ... and {n_items - 10} more\n"
+
+        reply = QMessageBox.question(
+            self, "Print Confirmation / پرنٹ کی تصدیق",
+            summary,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        if reply != QMessageBox.Yes:
+            self.statusBar().showMessage("Print cancelled by user.", 3000)
+            return
+
         # Show our custom print setup dialog
         try:
             dlg = PrintSetupDialog(
                 lay,
-                default_copies=self.copies_spin.value(),
+                default_copies=copies,
                 parent=self,
                 test_print_callback=self._do_test_print
             )

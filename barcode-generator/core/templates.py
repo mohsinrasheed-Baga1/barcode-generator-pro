@@ -65,11 +65,12 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_price: bool = False) -> StickerTemplate:
     """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
-    # Scale font sizes based on sticker size
-    company_pt = max(4.0, min(14.0, base_h * 0.18))
-    body_pt    = max(3.0, min(11.0, base_h * 0.14))
-    small_pt   = max(3.0, min(10.0, base_h * 0.12))
-    barcode_pt = max(3.0, min(11.0, base_h * 0.13))
+    # Scale font sizes based on sticker size — with LARGER minimums
+    # for readability on small labels (24mm tall)
+    company_pt = max(7.0, min(16.0, base_h * 0.22))   # min 7pt
+    body_pt    = max(6.0, min(13.0, base_h * 0.18))   # min 6pt
+    small_pt   = max(5.0, min(11.0, base_h * 0.15))   # min 5pt
+    barcode_pt = max(6.0, min(12.0, base_h * 0.16))   # min 6pt
 
     # Element heights as fraction of sticker height — compact layout
     # that fits within the sticker boundary even for small stickers (25mm)
@@ -200,8 +201,8 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
         y += mobile_h
 
     if include_price:
-        # Price — bold, prominent, right-aligned
-        price_pt = max(4.0, min(14.0, base_h * 0.16))
+        # Price — bold, prominent, large
+        price_pt = max(7.0, min(16.0, base_h * 0.20))
         elements.append(StickerElement(
             id='price',
             label='Price / قیمت',
