@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "3.1.0"
+APP_VERSION = "3.2.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -58,28 +58,39 @@ class ZoomableGraphicsView(QGraphicsView):
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self._total_zoom = 1.0
 
+    def _update_zoom_label(self, scale: float = None):
+        if scale is None:
+            scale = self.transform().m11()
+        pct = int(scale * 100)
+        # Find the main window to update the label
+        parent = self.parent()
+        while parent and not hasattr(parent, 'zoom_label'):
+            parent = parent.parent()
+        if parent and hasattr(parent, 'zoom_label'):
+            parent.zoom_label.setText(f"{pct}%")
+
     def wheelEvent(self, event):
-        # Zoom toward cursor position (like Canva/Photoshop)
-        cursor_scene_pos = self.mapToScene(event.pos())
+        # Zoom toward cursor — use centerOn (not translate) so elements
+        # don't appear to move. Only the viewport adjusts.
+        cursor_scene = self.mapToScene(event.pos())
+        view_center = self.mapToScene(self.viewport().rect().center())
         delta = event.angleDelta().y()
         factor = 1.15 if delta > 0 else 1/1.15
-        # Check zoom limits BEFORE applying
+        # Check zoom limits
         new_zoom = self._total_zoom * factor
-        if new_zoom < self.MIN_ZOOM:
-            factor = self.MIN_ZOOM / self._total_zoom
-            if factor >= 1.0:
-                return  # already at min
-        elif new_zoom > self.MAX_ZOOM:
-            factor = self.MAX_ZOOM / self._total_zoom
-            if factor <= 1.0:
-                return  # already at max
+        if new_zoom < self.MIN_ZOOM or new_zoom > self.MAX_ZOOM:
+            event.accept()
+            return
         self._total_zoom *= factor
         self.scale(factor, factor)
-        # Keep cursor position stable
-        new_cursor_scene_pos = self.mapToScene(event.pos())
-        dx = new_cursor_scene_pos.x() - cursor_scene_pos.x()
-        dy = new_cursor_scene_pos.y() - cursor_scene_pos.y()
-        self.translate(dx, dy)
+        # After scaling, cursor moved in scene coords — compensate
+        new_cursor = self.mapToScene(event.pos())
+        shift_x = new_cursor.x() - cursor_scene.x()
+        shift_y = new_cursor.y() - cursor_scene.y()
+        self.centerOn(QPointF(view_center.x() + shift_x,
+                              view_center.y() + shift_y))
+        # Update zoom label
+        self._update_zoom_label()
         event.accept()
 
     def reset_zoom(self):
@@ -510,6 +521,16 @@ class MainWindow(QMainWindow):
         self.zoom_fit_btn.clicked.connect(self.on_zoom_fit)
         toolbar.addWidget(self.zoom_fit_btn)
 
+        # Sticker border/frame option
+        self.toolbar_border = QPushButton("🔲")
+        self.toolbar_border.setMaximumWidth(35)
+        self.toolbar_border.setToolTip("Sticker Border / Frame")
+        self.toolbar_border.clicked.connect(self._toggle_border)
+        toolbar.addWidget(self.toolbar_border)
+
+        # Separator
+        toolbar.addWidget(self._make_separator())
+
         # Selected element label (right side)
         toolbar.addStretch(1)
         self.selected_elem_label = QLabel("No element selected — click on sticker to select")
@@ -677,15 +698,43 @@ class MainWindow(QMainWindow):
         sep.setMaximumWidth(2)
         return sep
 
+    def _toggle_border(self):
+        """Toggle sticker border on/off."""
+        if self.template.border_width_mm > 0:
+            self.template.border_width_mm = 0
+            self.toolbar_border.setStyleSheet("")
+        else:
+            self.template.border_width_mm = 0.3
+            self.template.border_color = '#000000'
+            self.toolbar_border.setStyleSheet("background: #1a4d8f; color: white;")
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+
     def _toolbar_font_changed(self):
-        """Called when font family, size, bold, or italic changes in toolbar."""
+        """Called when font family, size, bold, or italic changes in toolbar.
+        For text elements: changes font properties.
+        For barcode: adjusts barcode height proportionally to 'size' value.
+        For logo: adjusts image size."""
         e = self._selected_elem()
-        if e is None or e.id in ('barcode', 'logo'):
+        if e is None:
             return
-        e.font_family = self.toolbar_font.currentText()
-        e.font_size_pt = float(self.toolbar_size.value())
-        e.bold = self.toolbar_bold.isChecked()
-        e.italic = self.toolbar_italic.isChecked()
+        if e.id == 'barcode':
+            # For barcode, the 'size' spinner controls barcode height
+            # Bigger size = taller barcode (better scanability)
+            new_h = max(2.0, float(self.toolbar_size.value()))
+            e.h_mm = new_h
+        elif e.id == 'logo':
+            # For logo, size controls both width and height equally
+            new_size = max(2.0, float(self.toolbar_size.value()))
+            e.w_mm = new_size
+            e.h_mm = new_size
+        else:
+            # Text element — change font properties
+            e.font_family = self.toolbar_font.currentText()
+            e.font_size_pt = float(self.toolbar_size.value())
+            e.bold = self.toolbar_bold.isChecked()
+            e.italic = self.toolbar_italic.isChecked()
         self._refresh_editor()
         self.db.set_setting('sticker_template_json',
                             template_to_json(self.template))
@@ -1352,10 +1401,17 @@ class MainWindow(QMainWindow):
         }
 
     def _refresh_editor(self):
-        """Rebuild the editor scene when template/layout changes."""
+        """Rebuild the editor scene — preserves element selection."""
         if not self.editor_scene:
             return
-        # Update sample data from current inputs
+        # Remember which element was selected before rebuild
+        selected_elem_id = None
+        from ui.sticker_editor import ElementItem
+        for it in self.editor_scene.items():
+            if isinstance(it, ElementItem) and it.isSelected():
+                selected_elem_id = id(it.element)
+                break
+        # Update sample data
         if self.current_items:
             self.editor_scene.sample_data = self.current_items[0]
         else:
@@ -1364,9 +1420,15 @@ class MainWindow(QMainWindow):
         self.template.sticker_w_mm = lay.sticker_w_mm
         self.template.sticker_h_mm = lay.sticker_h_mm
         self.editor_scene.template = self.template
-        self.editor_scene.layout = lay  # Update layout for full-sheet view
+        self.editor_scene.layout = lay
         self.editor_scene.refresh()
-        # Fit the view to the scene
+        # Re-select the element that was selected before
+        if selected_elem_id is not None:
+            for it in self.editor_scene.items():
+                if isinstance(it, ElementItem) and id(it.element) == selected_elem_id:
+                    it.setSelected(True)
+                    it.setFocus()
+                    break
         QTimer.singleShot(20, self._fit_editor_view)
 
     def _fit_editor_view(self):
@@ -1409,11 +1471,9 @@ class MainWindow(QMainWindow):
     def _show_elem_props(self, element):
         """Update toolbar to reflect the selected element's properties."""
         if element is None:
-            self.selected_elem_label.setText("No element selected — click on sticker to select")
+            self.selected_elem_label.setText("No element selected — click on sticker")
             return
-        # Update selected element label
         self.selected_elem_label.setText(f"Selected: {element.label}")
-        # Block signals while updating toolbar
         for w in [self.toolbar_font, self.toolbar_size, self.toolbar_bold, self.toolbar_italic]:
             w.blockSignals(True)
         is_text = element.id not in ('barcode', 'logo')
@@ -1424,23 +1484,35 @@ class MainWindow(QMainWindow):
             self.toolbar_italic.setChecked(element.italic)
             # Enable font controls
             self.toolbar_font.setEnabled(True)
-            self.toolbar_size.setEnabled(True)
             self.toolbar_bold.setEnabled(True)
             self.toolbar_italic.setEnabled(True)
             self.toolbar_align_left.setEnabled(True)
             self.toolbar_align_center.setEnabled(True)
             self.toolbar_align_right.setEnabled(True)
             self.toolbar_color.setEnabled(True)
-        else:
-            # Disable font controls for barcode/logo
+        elif element.id == 'barcode':
+            # For barcode: only size (height) matters
+            self.toolbar_size.setValue(element.h_mm)
             self.toolbar_font.setEnabled(False)
-            self.toolbar_size.setEnabled(False)
             self.toolbar_bold.setEnabled(False)
             self.toolbar_italic.setEnabled(False)
             self.toolbar_align_left.setEnabled(False)
             self.toolbar_align_center.setEnabled(False)
             self.toolbar_align_right.setEnabled(False)
             self.toolbar_color.setEnabled(False)
+            # Size IS enabled — controls barcode height
+            self.toolbar_size.setEnabled(True)
+        elif element.id == 'logo':
+            # For logo: only size matters
+            self.toolbar_size.setValue(element.w_mm)
+            self.toolbar_font.setEnabled(False)
+            self.toolbar_bold.setEnabled(False)
+            self.toolbar_italic.setEnabled(False)
+            self.toolbar_align_left.setEnabled(False)
+            self.toolbar_align_center.setEnabled(False)
+            self.toolbar_align_right.setEnabled(False)
+            self.toolbar_color.setEnabled(False)
+            self.toolbar_size.setEnabled(True)
         for w in [self.toolbar_font, self.toolbar_size, self.toolbar_bold, self.toolbar_italic]:
             w.blockSignals(False)
 
