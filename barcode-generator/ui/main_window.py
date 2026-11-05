@@ -42,8 +42,8 @@ from ui.sticker_editor import StickerEditorDialog
 from ui.print_setup_dialog import PrintSetupDialog
 
 
-APP_TITLE = "Barcode Generator Pro — EAN-13"
-APP_VERSION = "2.8.0"
+APP_TITLE = "Barcode Generator Pro"
+APP_VERSION = "3.0.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -151,23 +151,46 @@ class MainWindow(QMainWindow):
         form.setVerticalSpacing(8)
 
         self.company_edit = QLineEdit()
-        self.company_edit.setPlaceholderText("e.g. ABC Traders / مثال: اے بی سی ٹریڈرز")
+        self.company_edit.setPlaceholderText("e.g. ABC Traders")
         self.company_edit.setText(self.default_company)
+        self.company_edit.textChanged.connect(lambda _: self._live_update())
         form.addRow("Company Name / کمپنی نام:", self.company_edit)
+        self.company_enabled_chk = QCheckBox("Include Company")
+        self.company_enabled_chk.setChecked(True)
+        self.company_enabled_chk.toggled.connect(lambda _: self._toggle_element('company_name', _))
+        form.addRow("", self.company_enabled_chk)
 
         self.product_edit = QLineEdit()
+        self.product_edit.textChanged.connect(lambda _: self._live_update())
         form.addRow("Product Name / پروڈکٹ نام:", self.product_edit)
+        self.product_name_enabled_chk = QCheckBox("Include Product Name")
+        self.product_name_enabled_chk.setChecked(True)
+        self.product_name_enabled_chk.toggled.connect(lambda _: self._toggle_element('product_name', _))
+        form.addRow("", self.product_name_enabled_chk)
 
         self.code_edit = QLineEdit()
+        self.code_edit.textChanged.connect(lambda _: self._live_update())
         form.addRow("Product Code / پروڈکٹ کوڈ:", self.code_edit)
+        self.code_enabled_chk = QCheckBox("Include Product Code")
+        self.code_enabled_chk.setChecked(True)
+        self.code_enabled_chk.toggled.connect(lambda _: self._toggle_element('product_code', _))
+        form.addRow("", self.code_enabled_chk)
+
+        # Barcode type dropdown
+        self.barcode_type_combo = QComboBox()
+        from core.barcode_gen import get_barcode_types_list
+        for key, label in get_barcode_types_list():
+            self.barcode_type_combo.addItem(label, key)
+        self.barcode_type_combo.currentIndexChanged.connect(lambda _: self._on_barcode_type_changed())
+        form.addRow("Barcode Type / بارکوڈ قسم:", self.barcode_type_combo)
 
         self.barcode_edit = QLineEdit()
-        self.barcode_edit.setPlaceholderText("12 digits — 13th auto / 12 ہندسے")
-        self.barcode_edit.setMaxLength(13)
+        self.barcode_edit.setPlaceholderText("Enter barcode value")
+        self.barcode_edit.textChanged.connect(lambda _: self._live_update())
         self.barcode_enabled_chk = QCheckBox("Include Barcode / بارکوڈ شامل کریں")
         self.barcode_enabled_chk.setChecked(True)
         self.barcode_enabled_chk.toggled.connect(self.on_barcode_enabled_toggled)
-        form.addRow("Barcode (EAN-13) / بارکوڈ:", self.barcode_edit)
+        form.addRow("Barcode / بارکوڈ:", self.barcode_edit)
         form.addRow("", self.barcode_enabled_chk)
 
         dates_row = QHBoxLayout()
@@ -175,6 +198,7 @@ class MainWindow(QMainWindow):
         self.mfg_date.setDisplayFormat("yyyy-MM-dd")
         self.mfg_date.setCalendarPopup(True)
         self.mfg_date.setDate(QDate.currentDate())
+        self.mfg_date.dateChanged.connect(lambda _: self._live_update())
         dates_row.addWidget(QLabel("Mfg:"))
         dates_row.addWidget(self.mfg_date)
 
@@ -182,16 +206,26 @@ class MainWindow(QMainWindow):
         self.exp_date.setDisplayFormat("yyyy-MM-dd")
         self.exp_date.setCalendarPopup(True)
         self.exp_date.setDate(QDate.currentDate().addMonths(12))
+        self.exp_date.dateChanged.connect(lambda _: self._live_update())
         dates_row.addWidget(QLabel("Exp:"))
         dates_row.addWidget(self.exp_date)
         dates_row.addStretch(1)
         dates_wrap = QWidget()
         dates_wrap.setLayout(dates_row)
         form.addRow("Dates / تاریخیں:", dates_wrap)
+        self.dates_enabled_chk = QCheckBox("Include Dates / تاریخیں شامل کریں")
+        self.dates_enabled_chk.setChecked(True)
+        self.dates_enabled_chk.toggled.connect(lambda _: self._toggle_element('dates', _))
+        form.addRow("", self.dates_enabled_chk)
 
         self.mobile_edit = QLineEdit()
         self.mobile_edit.setText(self.default_mobile)
+        self.mobile_edit.textChanged.connect(lambda _: self._live_update())
         form.addRow("Mobile / موبائل:", self.mobile_edit)
+        self.mobile_enabled_chk = QCheckBox("Include Mobile / موبائل شامل کریں")
+        self.mobile_enabled_chk.setChecked(True)
+        self.mobile_enabled_chk.toggled.connect(lambda _: self._toggle_element('mobile', _))
+        form.addRow("", self.mobile_enabled_chk)
 
         # Price field + Include Price checkbox
         self.price_edit = QLineEdit()
@@ -618,6 +652,38 @@ class MainWindow(QMainWindow):
         )
 
     # ----------------------------------------------------- barcode toggle
+    def _live_update(self):
+        """Live update the preview when form fields change — no need to click Add to Sheet."""
+        # Build sample data from current form inputs
+        data = self._build_sample_data()
+        # If no items in queue, use live data for preview
+        if not self.current_items:
+            if hasattr(self, 'editor_scene') and self.editor_scene:
+                self.editor_scene.sample_data = data
+                self._refresh_editor()
+        else:
+            # Update first item with live data
+            self.current_items[0].update(data)
+            self._refresh_preview()
+
+    def _toggle_element(self, element_id: str, enabled: bool):
+        """Enable/disable an element in the template."""
+        for e in self.template.elements:
+            if e.id == element_id:
+                e.enabled = bool(enabled)
+                break
+        self._refresh_preview()
+        self._update_statusbar()
+
+    def _on_barcode_type_changed(self):
+        """Update barcode type in template when dropdown changes."""
+        bc_type = self.barcode_type_combo.currentData()
+        for e in self.template.elements:
+            if e.id == 'barcode':
+                e.barcode_type = bc_type
+                break
+        self._refresh_preview()
+
     def on_barcode_enabled_toggled(self, checked: bool):
         for e in self.template.elements:
             if e.id in ('barcode', 'barcode_digits'):
@@ -800,10 +866,22 @@ class MainWindow(QMainWindow):
             # Preserve barcode enabled/disabled state from Include Barcode checkbox.
             include_barcode = self.barcode_enabled_chk.isChecked() if hasattr(self, 'barcode_enabled_chk') else True
             include_price = self.price_enabled_chk.isChecked() if hasattr(self, 'price_enabled_chk') else False
+            include_company = self.company_enabled_chk.isChecked() if hasattr(self, 'company_enabled_chk') else True
+            include_product_name = self.product_name_enabled_chk.isChecked() if hasattr(self, 'product_name_enabled_chk') else True
+            include_product_code = self.code_enabled_chk.isChecked() if hasattr(self, 'code_enabled_chk') else True
+            include_dates = self.dates_enabled_chk.isChecked() if hasattr(self, 'dates_enabled_chk') else True
+            include_mobile = self.mobile_enabled_chk.isChecked() if hasattr(self, 'mobile_enabled_chk') else True
+            bc_type = self.barcode_type_combo.currentData() if hasattr(self, 'barcode_type_combo') else 'ean13'
             self.template = default_template(
                 lay.sticker_w_mm, lay.sticker_h_mm,
                 include_barcode=include_barcode,
                 include_price=include_price,
+                include_company=include_company,
+                include_product_name=include_product_name,
+                include_product_code=include_product_code,
+                include_dates=include_dates,
+                include_mobile=include_mobile,
+                barcode_type=bc_type,
             )
             self.db.set_setting('sticker_template_json', template_to_json(self.template))
         self._update_layout_info()
@@ -1201,13 +1279,14 @@ class MainWindow(QMainWindow):
 
     def _build_sample_data(self):
         return {
-            'company_name': self.company_edit.text() or 'Company Name',
-            'product_name': self.product_edit.text() or 'Product Name',
-            'product_code': self.code_edit.text() or 'CODE-001',
+            'company_name': self.company_edit.text() or '',
+            'product_name': self.product_edit.text() or '',
+            'product_code': self.code_edit.text() or '',
             'barcode': self.barcode_edit.text() or '501234567890',
             'mfg_date': self.mfg_date.date().toString("yyyy-MM-dd"),
             'exp_date': self.exp_date.date().toString("yyyy-MM-dd"),
-            'mobile': self.mobile_edit.text() or '+92 300 1234567',
+            'mobile': self.mobile_edit.text() or '',
+            'price': self.price_edit.text() if hasattr(self, 'price_edit') and self.price_enabled_chk.isChecked() else '',
         }
 
     def _refresh_editor(self):

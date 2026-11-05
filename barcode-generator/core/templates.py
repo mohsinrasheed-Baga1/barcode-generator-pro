@@ -33,14 +33,12 @@ class StickerElement:
     italic: bool = False
     align: str = 'center'
     color: str = '#000000'
-    # For logo elements only — base64-encoded image data + format
-    image_data: str = ''   # base64-encoded PNG/JPEG, empty for non-logo elements
-    image_format: str = 'PNG'  # 'PNG' or 'JPEG'
-    # How to fit the image in the element rect:
-    #   'contain' — entire image visible, may have padding
-    #   'cover'   — fill rect completely, may crop
-    #   'stretch' — fill rect, may distort
+    # For logo elements only
+    image_data: str = ''
+    image_format: str = 'PNG'
     image_fit: str = 'contain'
+    # Barcode type for barcode elements
+    barcode_type: str = 'ean13'
 
 
 @dataclass
@@ -62,7 +60,8 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
                      include_mobile: bool = True,
                      include_company: bool = True,
                      include_logo: bool = False,
-                     include_price: bool = False) -> StickerTemplate:
+                     include_price: bool = False,
+                     barcode_type: str = 'ean13') -> StickerTemplate:
     """Auto-build a sensible default template for a given sticker size."""
     base_h = sticker_h_mm
     # Scale font sizes based on sticker size — with LARGER minimums
@@ -138,6 +137,7 @@ def default_template(sticker_w_mm: float, sticker_h_mm: float,
             x_mm=1.0, y_mm=y,
             w_mm=sticker_w_mm - 2.0,
             h_mm=barcode_h,
+            barcode_type=barcode_type,
         ))
         y += barcode_h
 
