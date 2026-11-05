@@ -250,6 +250,8 @@ class ElementItem(QGraphicsRectItem):
                         self._resize_start_rot = self.rotation()
                         self._resize_start_center = self.mapToScene(
                             self._resize_start_rect.center())
+                        # Save mouse scene position at start
+                        self._resize_start_mouse = event.scenePos()
                         event.accept()
                         return
         # Otherwise, default behavior (move/select)
@@ -280,134 +282,42 @@ class ElementItem(QGraphicsRectItem):
 
     # ------------------------------------------------------ Resize logic
     def _do_resize(self, event):
-        """Resize based on which handle is being dragged."""
+        """Simple resize — changes only w_mm/h_mm, position stays FIXED.
+        No complex rotation math, no jumping."""
         px_per_mm = 1.0 / self.mm_per_px
-        # Get the mouse position in scene coords
-        mouse_scene = self.mapToScene(event.pos())
-        # Convert to local (unrotated) coords — this is tricky with rotation
-        # We need to undo the rotation around the start center.
-        # Approach: compute the mouse position in the unrotated element's local frame.
-        # The element's center in scene coords at start was _resize_start_center.
-        # The element's rotation at start was _resize_start_rot.
-        # To get local unrotated coords:
-        #   v = mouse_scene - start_center
-        #   v_local = v rotated by -start_rot
-        #   local = v_local + start_rect_center (in start's local frame, which is start_rect.center())
-        start_rect = self._resize_start_rect
-        start_center_local = start_rect.center()
-        start_center_scene = self._resize_start_center
-        v = mouse_scene - start_center_scene
-        # Rotate v by -start_rot (in degrees)
-        angle = -self._resize_start_rot
-        rad = angle * 3.14159265 / 180.0
-        cos_a = __import__('math').cos(rad)
-        sin_a = __import__('math').sin(rad)
-        vx = v.x() * cos_a - v.y() * sin_a
-        vy = v.x() * sin_a + v.y() * cos_a
-        mouse_local = QPointF(vx + start_center_local.x(),
-                              vy + start_center_local.y())
-
-        # Now compute new rect based on which handle is being dragged
+        # Mouse delta from start position (in scene coords → mm)
+        mouse = event.scenePos()
+        delta_x_mm = (mouse.x() - self._resize_start_mouse.x()) / px_per_mm
+        delta_y_mm = (mouse.y() - self._resize_start_mouse.y()) / px_per_mm
+        # Start dimensions (in mm)
+        start_w = self._resize_start_rect.width() / px_per_mm
+        start_h = self._resize_start_rect.height() / px_per_mm
+        min_size = 1.0  # mm minimum
         hid = self._resize_handle
-        r = QRectF(start_rect)
-        min_size = 2.0  # px
-        if hid == HANDLE_TOP_LEFT:
-            r.setLeft(min(mouse_local.x(), r.right() - min_size))
-            r.setTop(min(mouse_local.y(), r.bottom() - min_size))
-        elif hid == HANDLE_TOP:
-            r.setTop(min(mouse_local.y(), r.bottom() - min_size))
-        elif hid == HANDLE_TOP_RIGHT:
-            r.setRight(max(mouse_local.x(), r.left() + min_size))
-            r.setTop(min(mouse_local.y(), r.bottom() - min_size))
-        elif hid == HANDLE_LEFT:
-            r.setLeft(min(mouse_local.x(), r.right() - min_size))
+        # Compute new width/height based on which handle is dragged
+        # Position (x_mm, y_mm) NEVER changes — no jumping!
+        if hid == HANDLE_BOTTOM_RIGHT:
+            self.element.w_mm = max(min_size, start_w + delta_x_mm)
+            self.element.h_mm = max(min_size, start_h + delta_y_mm)
         elif hid == HANDLE_RIGHT:
-            r.setRight(max(mouse_local.x(), r.left() + min_size))
-        elif hid == HANDLE_BOTTOM_LEFT:
-            r.setLeft(min(mouse_local.x(), r.right() - min_size))
-            r.setBottom(max(mouse_local.y(), r.top() + min_size))
+            self.element.w_mm = max(min_size, start_w + delta_x_mm)
         elif hid == HANDLE_BOTTOM:
-            r.setBottom(max(mouse_local.y(), r.top() + min_size))
-        elif hid == HANDLE_BOTTOM_RIGHT:
-            r.setRight(max(mouse_local.x(), r.left() + min_size))
-            r.setBottom(max(mouse_local.y(), r.top() + min_size))
-
-        # Compute new width/height in mm
-        new_w_mm = r.width() / px_per_mm
-        new_h_mm = r.height() / px_per_mm
-        # Clamp to reasonable values
-        new_w_mm = max(1.0, min(500.0, new_w_mm))
-        new_h_mm = max(1.0, min(500.0, new_h_mm))
-        self.element.w_mm = new_w_mm
-        self.element.h_mm = new_h_mm
-
-        # Compute new position in scene coords.
-        # When resizing from a corner, the opposite corner stays fixed in scene.
-        # The opposite corner in local (unrotated) start frame:
-        opposite_local = QPointF()
-        if hid == HANDLE_TOP_LEFT: opposite_local = start_rect.bottomRight()
-        elif hid == HANDLE_TOP: opposite_local = QPointF(start_rect.center().x(), start_rect.bottom())
-        elif hid == HANDLE_TOP_RIGHT: opposite_local = start_rect.bottomLeft()
-        elif hid == HANDLE_LEFT: opposite_local = QPointF(start_rect.right(), start_rect.center().y())
-        elif hid == HANDLE_RIGHT: opposite_local = QPointF(start_rect.left(), start_rect.center().y())
-        elif hid == HANDLE_BOTTOM_LEFT: opposite_local = start_rect.topRight()
-        elif hid == HANDLE_BOTTOM: opposite_local = QPointF(start_rect.center().x(), start_rect.top())
-        elif hid == HANDLE_BOTTOM_RIGHT: opposite_local = start_rect.topLeft()
-        # Convert opposite corner to scene coords (start)
-        opposite_scene = self.mapToScene(opposite_local)
-        # Now compute new center based on new w/h, with opposite corner fixed
-        # The new rect in local frame (centered at origin for simplicity):
-        # new_local_center is offset from opposite corner by (sign) * new_w/2, (sign) * new_h/2
-        # sign depends on which corner is fixed
-        signs = {
-            HANDLE_TOP_LEFT: (1, 1),  # opposite is bottom-right, so new center is +w/2, +h/2 from it
-            HANDLE_TOP: (0, 1),
-            HANDLE_TOP_RIGHT: (-1, 1),
-            HANDLE_LEFT: (1, 0),
-            HANDLE_RIGHT: (-1, 0),
-            HANDLE_BOTTOM_LEFT: (1, -1),
-            HANDLE_BOTTOM: (0, -1),
-            HANDLE_BOTTOM_RIGHT: (-1, -1),
-        }
-        sx, sy = signs[hid]
-        # New local center (in unrotated frame) is at:
-        # opposite_local + (sx * new_w_mm_px / 2, sy * new_h_mm_px / 2)
-        new_w_px = new_w_mm * px_per_mm
-        new_h_px = new_h_mm * px_per_mm
-        new_center_local = QPointF(
-            opposite_local.x() + sx * new_w_px / 2,
-            opposite_local.y() + sy * new_h_px / 2,
-        )
-        # But wait — opposite_local is in start frame, but rotation is around center.
-        # Since we keep rotation the same, the new center in scene is:
-        # opposite_scene + (rotated offset from opposite to new center)
-        offset_local = QPointF(new_center_local.x() - opposite_local.x(),
-                                new_center_local.y() - opposite_local.y())
-        # Rotate offset by start_rot
-        rad2 = self._resize_start_rot * 3.14159265 / 180.0
-        cos_b = __import__('math').cos(rad2)
-        sin_b = __import__('math').sin(rad2)
-        ox = offset_local.x() * cos_b - offset_local.y() * sin_b
-        oy = offset_local.x() * sin_b + offset_local.y() * cos_b
-        new_center_scene = QPointF(opposite_scene.x() + ox, opposite_scene.y() + oy)
-        # New top-left in scene = new_center_scene - (new_w/2, new_h/2) rotated by start_rot
-        # Actually, we need to set position (which is top-left of unrotated rect)
-        # The local (0, 0) maps to: new_center_scene - (new_w/2 rotated, new_h/2 rotated)
-        local_origin = QPointF(-new_w_px / 2, -new_h_px / 2)
-        rad3 = self._resize_start_rot * 3.14159265 / 180.0
-        cos_c = __import__('math').cos(rad3)
-        sin_c = __import__('math').sin(rad3)
-        ox2 = local_origin.x() * cos_c - local_origin.y() * sin_c
-        oy2 = local_origin.x() * sin_c + local_origin.y() * cos_c
-        new_pos_scene = QPointF(new_center_scene.x() + ox2, new_center_scene.y() + oy2)
-        # Set new position
-        self.element.x_mm = new_pos_scene.x() / px_per_mm
-        self.element.y_mm = new_pos_scene.y() / px_per_mm
-        self.setPos(new_pos_scene)
-        # Update rect + transform origin
-        self.setRect(QRectF(0, 0, new_w_px, new_h_px))
-        self.setTransformOriginPoint(new_w_px / 2, new_h_px / 2)
-        self._update_handles()
+            self.element.h_mm = max(min_size, start_h + delta_y_mm)
+        elif hid == HANDLE_TOP_LEFT:
+            self.element.w_mm = max(min_size, start_w - delta_x_mm)
+            self.element.h_mm = max(min_size, start_h - delta_y_mm)
+        elif hid == HANDLE_TOP:
+            self.element.h_mm = max(min_size, start_h - delta_y_mm)
+        elif hid == HANDLE_LEFT:
+            self.element.w_mm = max(min_size, start_w - delta_x_mm)
+        elif hid == HANDLE_TOP_RIGHT:
+            self.element.w_mm = max(min_size, start_w + delta_x_mm)
+            self.element.h_mm = max(min_size, start_h - delta_y_mm)
+        elif hid == HANDLE_BOTTOM_LEFT:
+            self.element.w_mm = max(min_size, start_w - delta_x_mm)
+            self.element.h_mm = max(min_size, start_h + delta_y_mm)
+        # Update geometry (position stays the same, only size changes)
+        self._update_geometry()
         self.update()
         self.parent_view.element_changed.emit(self.element)
 

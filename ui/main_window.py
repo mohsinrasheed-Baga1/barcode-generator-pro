@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "3.2.0"
+APP_VERSION = "3.3.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -70,28 +70,32 @@ class ZoomableGraphicsView(QGraphicsView):
             parent.zoom_label.setText(f"{pct}%")
 
     def wheelEvent(self, event):
-        # Zoom toward cursor — use centerOn (not translate) so elements
-        # don't appear to move. Only the viewport adjusts.
-        cursor_scene = self.mapToScene(event.pos())
-        view_center = self.mapToScene(self.viewport().rect().center())
-        delta = event.angleDelta().y()
-        factor = 1.15 if delta > 0 else 1/1.15
-        # Check zoom limits
-        new_zoom = self._total_zoom * factor
-        if new_zoom < self.MIN_ZOOM or new_zoom > self.MAX_ZOOM:
+        # Zoom toward cursor — wrapped in try/except to prevent crash
+        try:
+            if not self.scene() or self.scene().sceneRect().isNull():
+                super().wheelEvent(event)
+                return
+            cursor_scene = self.mapToScene(event.pos())
+            view_center = self.mapToScene(self.viewport().rect().center())
+            delta = event.angleDelta().y()
+            factor = 1.15 if delta > 0 else 1/1.15
+            new_zoom = self._total_zoom * factor
+            if new_zoom < self.MIN_ZOOM or new_zoom > self.MAX_ZOOM:
+                event.accept()
+                return
+            self._total_zoom *= factor
+            self.scale(factor, factor)
+            # Compensate so cursor stays at same scene point
+            new_cursor = self.mapToScene(event.pos())
+            shift_x = new_cursor.x() - cursor_scene.x()
+            shift_y = new_cursor.y() - cursor_scene.y()
+            self.centerOn(QPointF(view_center.x() + shift_x,
+                                  view_center.y() + shift_y))
+            self._update_zoom_label()
             event.accept()
-            return
-        self._total_zoom *= factor
-        self.scale(factor, factor)
-        # After scaling, cursor moved in scene coords — compensate
-        new_cursor = self.mapToScene(event.pos())
-        shift_x = new_cursor.x() - cursor_scene.x()
-        shift_y = new_cursor.y() - cursor_scene.y()
-        self.centerOn(QPointF(view_center.x() + shift_x,
-                              view_center.y() + shift_y))
-        # Update zoom label
-        self._update_zoom_label()
-        event.accept()
+        except Exception:
+            # If anything goes wrong, just do normal scroll
+            super().wheelEvent(event)
 
     def reset_zoom(self):
         """Reset zoom to 100% and center on scene."""
@@ -312,6 +316,26 @@ class MainWindow(QMainWindow):
         self.copies_spin.setValue(1)
         self.copies_spin.valueChanged.connect(lambda _: self._refresh_preview())
         layout_form.addRow("Print copies:", self.copies_spin)
+
+        # Manual sticker size input
+        size_row = QHBoxLayout()
+        self.sticker_w_input = QDoubleSpinBox()
+        self.sticker_w_input.setRange(5, 500)
+        self.sticker_w_input.setDecimals(1)
+        self.sticker_w_input.setSuffix(" mm")
+        self.sticker_w_input.setToolTip("Sticker Width")
+        self.sticker_w_input.valueChanged.connect(self._on_manual_size_changed)
+        size_row.addWidget(QLabel("W:"))
+        size_row.addWidget(self.sticker_w_input)
+        self.sticker_h_input = QDoubleSpinBox()
+        self.sticker_h_input.setRange(3, 500)
+        self.sticker_h_input.setDecimals(1)
+        self.sticker_h_input.setSuffix(" mm")
+        self.sticker_h_input.setToolTip("Sticker Height")
+        self.sticker_h_input.valueChanged.connect(self._on_manual_size_changed)
+        size_row.addWidget(QLabel("H:"))
+        size_row.addWidget(self.sticker_h_input)
+        layout_form.addRow("Sticker Size:", size_row)
 
         left_layout.addWidget(layout_box)
 
@@ -946,6 +970,25 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
+    def _on_manual_size_changed(self):
+        """Update sticker size from manual input."""
+        lay = self._current_layout()
+        new_w = self.sticker_w_input.value()
+        new_h = self.sticker_h_input.value()
+        if abs(new_w - lay.sticker_w_mm) < 0.1 and abs(new_h - lay.sticker_h_mm) < 0.1:
+            return  # no change
+        # Update layout sticker size
+        lay.sticker_w_mm = new_w
+        lay.sticker_h_mm = new_h
+        # Regenerate template for new size
+        include_barcode = self.barcode_enabled_chk.isChecked()
+        include_price = self.price_enabled_chk.isChecked()
+        self.template = default_template(new_w, new_h, include_barcode=include_barcode, include_price=include_price)
+        self.db.set_setting('sticker_template_json', template_to_json(self.template))
+        self._refresh_preview()
+        self._refresh_editor()
+        self._update_statusbar()
+
     def on_layout_changed(self, idx: int):
         key = self.layout_combo.currentData()
         if key == "__custom__":
@@ -1017,6 +1060,14 @@ class MainWindow(QMainWindow):
                 f"{lay.cols}×{lay.rows} = {total_slots(lay)} stickers/sheet\n"
                 f"Sticker: {lay.sticker_w_mm} × {lay.sticker_h_mm} mm"
             )
+        # Update manual size inputs (block signals to avoid feedback loop)
+        if hasattr(self, 'sticker_w_input'):
+            self.sticker_w_input.blockSignals(True)
+            self.sticker_h_input.blockSignals(True)
+            self.sticker_w_input.setValue(lay.sticker_w_mm)
+            self.sticker_h_input.setValue(lay.sticker_h_mm)
+            self.sticker_w_input.blockSignals(False)
+            self.sticker_h_input.blockSignals(False)
         self._update_statusbar()
 
     def _refresh_preview(self):
