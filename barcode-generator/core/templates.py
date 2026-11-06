@@ -282,13 +282,16 @@ def get_text_for_element(element_id: str, data: dict) -> str:
         p = data.get('price', '')
         if not p:
             return ''
-        # Format: if it's a number, prefix with Rs.
         try:
             float(p)
             return f"Rs. {p}"
         except ValueError:
             return p
-    return ''
+    # Custom text elements — look up by element id in data dict
+    if element_id.startswith('text_'):
+        return data.get(element_id, '')
+    # Default: look up by element id
+    return data.get(element_id, '')
 
 
 def enabled_elements(template: StickerTemplate) -> List[StickerElement]:
