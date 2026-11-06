@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "3.3.0"
+APP_VERSION = "4.0.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -144,554 +144,314 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        # Use QSplitter so the user can resize left/right panels
-        from PyQt5.QtWidgets import QSplitter
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setContentsMargins(0, 0, 0, 0)
+        # v4.0: No more left panel — full-width canvas with top + bottom bars
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # ---- left: input form (wrapped in scroll area for small screens) ----
-        left_inner = QWidget()
-        left_layout = QVBoxLayout(left_inner)
-        left_layout.setContentsMargins(8, 8, 8, 8)
-        left_layout.setSpacing(6)
+        # ===== TOP BAR (dark, modern — barcode + font + zoom) =====
+        top_bar = QHBoxLayout()
+        top_bar.setContentsMargins(6, 4, 6, 4)
+        top_bar.setSpacing(6)
 
-        title = QLabel(f"<h2>{APP_TITLE}</h2><i>Version {APP_VERSION}</i>")
-        title.setStyleSheet("color: #1a4d8f;")
-        left_layout.addWidget(title)
-
-        form_box = QGroupBox("Sticker Information / اسٹیکر کی معلومات")
-        form = QFormLayout(form_box)
-        form.setLabelAlignment(Qt.AlignRight)
-        form.setHorizontalSpacing(10)
-        form.setVerticalSpacing(8)
-
-        self.company_edit = QLineEdit()
-        self.company_edit.setPlaceholderText("e.g. ABC Traders")
-        self.company_edit.setText(self.default_company)
-        self.company_edit.textChanged.connect(lambda _: self._live_update())
-        form.addRow("Company Name / کمپنی نام:", self.company_edit)
-        self.company_enabled_chk = QCheckBox("Include Company")
-        self.company_enabled_chk.setChecked(True)
-        self.company_enabled_chk.toggled.connect(lambda _: self._toggle_element('company_name', _))
-        form.addRow("", self.company_enabled_chk)
-
-        self.product_edit = QLineEdit()
-        self.product_edit.textChanged.connect(lambda _: self._live_update())
-        form.addRow("Product Name / پروڈکٹ نام:", self.product_edit)
-        self.product_name_enabled_chk = QCheckBox("Include Product Name")
-        self.product_name_enabled_chk.setChecked(True)
-        self.product_name_enabled_chk.toggled.connect(lambda _: self._toggle_element('product_name', _))
-        form.addRow("", self.product_name_enabled_chk)
-
-        self.code_edit = QLineEdit()
-        self.code_edit.textChanged.connect(lambda _: self._live_update())
-        form.addRow("Product Code / پروڈکٹ کوڈ:", self.code_edit)
-        self.code_enabled_chk = QCheckBox("Include Product Code")
-        self.code_enabled_chk.setChecked(True)
-        self.code_enabled_chk.toggled.connect(lambda _: self._toggle_element('product_code', _))
-        form.addRow("", self.code_enabled_chk)
-
-        # Barcode type dropdown
+        # Barcode input + type + include
+        top_bar.addWidget(QLabel("Barcode:"))
+        self.barcode_edit = QLineEdit()
+        self.barcode_edit.setMaximumWidth(120)
+        self.barcode_edit.setPlaceholderText("Enter number")
+        self.barcode_edit.textChanged.connect(lambda _: self._live_update())
+        top_bar.addWidget(self.barcode_edit)
         self.barcode_type_combo = QComboBox()
         from core.barcode_gen import get_barcode_types_list
         for key, label in get_barcode_types_list():
             self.barcode_type_combo.addItem(label, key)
+        self.barcode_type_combo.setMaximumWidth(120)
         self.barcode_type_combo.currentIndexChanged.connect(lambda _: self._on_barcode_type_changed())
-        form.addRow("Barcode Type / بارکوڈ قسم:", self.barcode_type_combo)
-
-        self.barcode_edit = QLineEdit()
-        self.barcode_edit.setPlaceholderText("Enter barcode value")
-        self.barcode_edit.textChanged.connect(lambda _: self._live_update())
-        self.barcode_enabled_chk = QCheckBox("Include Barcode / بارکوڈ شامل کریں")
+        top_bar.addWidget(self.barcode_type_combo)
+        self.barcode_enabled_chk = QCheckBox("BC")
         self.barcode_enabled_chk.setChecked(True)
+        self.barcode_enabled_chk.setToolTip("Include Barcode")
         self.barcode_enabled_chk.toggled.connect(self.on_barcode_enabled_toggled)
-        form.addRow("Barcode / بارکوڈ:", self.barcode_edit)
-        form.addRow("", self.barcode_enabled_chk)
+        top_bar.addWidget(self.barcode_enabled_chk)
 
-        dates_row = QHBoxLayout()
-        self.mfg_date = QDateEdit()
-        self.mfg_date.setDisplayFormat("yyyy-MM-dd")
-        self.mfg_date.setCalendarPopup(True)
-        self.mfg_date.setDate(QDate.currentDate())
-        self.mfg_date.dateChanged.connect(lambda _: self._live_update())
-        dates_row.addWidget(QLabel("Mfg:"))
-        dates_row.addWidget(self.mfg_date)
+        top_bar.addWidget(self._make_separator())
 
-        self.exp_date = QDateEdit()
-        self.exp_date.setDisplayFormat("yyyy-MM-dd")
-        self.exp_date.setCalendarPopup(True)
-        self.exp_date.setDate(QDate.currentDate().addMonths(12))
-        self.exp_date.dateChanged.connect(lambda _: self._live_update())
-        dates_row.addWidget(QLabel("Exp:"))
-        dates_row.addWidget(self.exp_date)
-        dates_row.addStretch(1)
-        dates_wrap = QWidget()
-        dates_wrap.setLayout(dates_row)
-        form.addRow("Dates / تاریخیں:", dates_wrap)
-        self.dates_enabled_chk = QCheckBox("Include Dates / تاریخیں شامل کریں")
-        self.dates_enabled_chk.setChecked(True)
-        self.dates_enabled_chk.toggled.connect(lambda _: self._toggle_element('dates', _))
-        form.addRow("", self.dates_enabled_chk)
+        # Font controls
+        self.toolbar_font = QComboBox()
+        self.toolbar_font.addItems(QFontDatabase().families())
+        self.toolbar_font.setMaximumWidth(130)
+        self.toolbar_font.currentTextChanged.connect(self._toolbar_font_changed)
+        top_bar.addWidget(self.toolbar_font)
+        self.toolbar_size = QDoubleSpinBox()
+        self.toolbar_size.setRange(2, 72); self.toolbar_size.setDecimals(1)
+        self.toolbar_size.setSuffix("pt"); self.toolbar_size.setMaximumWidth(60)
+        self.toolbar_size.valueChanged.connect(self._toolbar_font_changed)
+        top_bar.addWidget(self.toolbar_size)
+        self.toolbar_bold = QPushButton("B")
+        self.toolbar_bold.setCheckable(True); self.toolbar_bold.setMaximumWidth(28)
+        self.toolbar_bold.setStyleSheet("font-weight: bold;")
+        self.toolbar_bold.toggled.connect(self._toolbar_font_changed)
+        top_bar.addWidget(self.toolbar_bold)
+        self.toolbar_italic = QPushButton("I")
+        self.toolbar_italic.setCheckable(True); self.toolbar_italic.setMaximumWidth(28)
+        self.toolbar_italic.toggled.connect(self._toolbar_font_changed)
+        top_bar.addWidget(self.toolbar_italic)
 
-        self.mobile_edit = QLineEdit()
-        self.mobile_edit.setText(self.default_mobile)
-        self.mobile_edit.textChanged.connect(lambda _: self._live_update())
-        form.addRow("Mobile / موبائل:", self.mobile_edit)
-        self.mobile_enabled_chk = QCheckBox("Include Mobile / موبائل شامل کریں")
-        self.mobile_enabled_chk.setChecked(True)
-        self.mobile_enabled_chk.toggled.connect(lambda _: self._toggle_element('mobile', _))
-        form.addRow("", self.mobile_enabled_chk)
+        top_bar.addWidget(self._make_separator())
 
-        # Price field + Include Price checkbox
-        self.price_edit = QLineEdit()
-        self.price_edit.setPlaceholderText("e.g. 150 or Rs. 150")
-        form.addRow("Price / قیمت:", self.price_edit)
-        self.price_enabled_chk = QCheckBox("Include Price / قیمت شامل کریں")
-        self.price_enabled_chk.setChecked(False)
-        self.price_enabled_chk.toggled.connect(self.on_price_enabled_toggled)
-        form.addRow("", self.price_enabled_chk)
+        # Align + color + rotate + border
+        for code, icon, tip in [('left', '⬅', 'Left'), ('center', '↔', 'Center'), ('right', '➡', 'Right')]:
+            b = QPushButton(icon); b.setMaximumWidth(28); b.setToolTip(tip)
+            b.clicked.connect(lambda _, c=code: self._toolbar_align(c))
+            top_bar.addWidget(b)
+            if code == 'left': self.toolbar_align_left = b
+            elif code == 'center': self.toolbar_align_center = b
+            elif code == 'right': self.toolbar_align_right = b
+        self.toolbar_color = QPushButton("🎨"); self.toolbar_color.setMaximumWidth(32)
+        self.toolbar_color.clicked.connect(self.on_elem_color_clicked)
+        top_bar.addWidget(self.toolbar_color)
+        self.toolbar_rot_left = QPushButton("↺"); self.toolbar_rot_left.setMaximumWidth(28)
+        self.toolbar_rot_left.clicked.connect(lambda: self._toolbar_rotate(-90))
+        top_bar.addWidget(self.toolbar_rot_left)
+        self.toolbar_rot_right = QPushButton("↻"); self.toolbar_rot_right.setMaximumWidth(28)
+        self.toolbar_rot_right.clicked.connect(lambda: self._toolbar_rotate(90))
+        top_bar.addWidget(self.toolbar_rot_right)
+        self.toolbar_border = QPushButton("🔲"); self.toolbar_border.setMaximumWidth(32)
+        self.toolbar_border.setToolTip("Border"); self.toolbar_border.clicked.connect(self._toggle_border)
+        top_bar.addWidget(self.toolbar_border)
 
-        left_layout.addWidget(form_box)
+        top_bar.addWidget(self._make_separator())
 
-        qty_row = QHBoxLayout()
-        qty_row.addWidget(QLabel("Quantity / تعداد:"))
-        self.qty_spin = QSpinBox()
-        self.qty_spin.setRange(1, 1000)
-        self.qty_spin.setValue(1)
-        qty_row.addWidget(self.qty_spin)
-        qty_row.addStretch(1)
-        left_layout.addLayout(qty_row)
+        # Zoom
+        self.zoom_out_btn = QPushButton("−"); self.zoom_out_btn.setMaximumWidth(28)
+        self.zoom_out_btn.clicked.connect(self.on_zoom_out)
+        top_bar.addWidget(self.zoom_out_btn)
+        self.zoom_label = QLabel("100%"); self.zoom_label.setMinimumWidth(40)
+        self.zoom_label.setAlignment(Qt.AlignCenter)
+        top_bar.addWidget(self.zoom_label)
+        self.zoom_in_btn = QPushButton("+"); self.zoom_in_btn.setMaximumWidth(28)
+        self.zoom_in_btn.clicked.connect(self.on_zoom_in)
+        top_bar.addWidget(self.zoom_in_btn)
+        self.zoom_fit_btn = QPushButton("Fit"); self.zoom_fit_btn.setMaximumWidth(36)
+        self.zoom_fit_btn.clicked.connect(self.on_zoom_fit)
+        top_bar.addWidget(self.zoom_fit_btn)
 
-        btn_row = QHBoxLayout()
-        self.add_btn = QPushButton("➕ Add to Sheet\nشیٹ میں شامل کریں")
-        self.add_btn.setStyleSheet("background: #1a4d8f; color: white; padding: 8px; font-weight: bold;")
-        self.add_btn.clicked.connect(self.on_add_clicked)
-        btn_row.addWidget(self.add_btn)
+        top_bar.addStretch(1)
 
-        self.clear_btn = QPushButton("🗑 Clear Sheet\nشیٹ خالی کریں")
-        self.clear_btn.clicked.connect(self.on_clear_clicked)
-        btn_row.addWidget(self.clear_btn)
-        left_layout.addLayout(btn_row)
+        # Selected element indicator
+        self.selected_elem_label = QLabel("Click element to select")
+        self.selected_elem_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        top_bar.addWidget(self.selected_elem_label)
 
-        bulk_box = QGroupBox("Bulk Import / بلک امپورٹ (CSV)")
-        bulk_layout = QVBoxLayout(bulk_box)
-        bulk_btns = QHBoxLayout()
-        self.import_btn = QPushButton("📂 Import CSV")
-        self.import_btn.clicked.connect(self.on_import_csv)
-        bulk_btns.addWidget(self.import_btn)
-        self.template_btn = QPushButton("📝 Save Template")
-        self.template_btn.clicked.connect(self.on_save_template)
-        bulk_btns.addWidget(self.template_btn)
-        bulk_layout.addLayout(bulk_btns)
-        self.bulk_status = QLabel("No file loaded.")
-        self.bulk_status.setStyleSheet("color: #555; font-size: 11px;")
-        bulk_layout.addWidget(self.bulk_status)
-        left_layout.addWidget(bulk_box)
+        top_bar.addWidget(self._make_separator())
+        # Powered by
+        powered = QLabel("⚡ Powered by Mohsin Rasheed Baga")
+        powered.setStyleSheet("color: #4fc3f7; font-size: 10px; font-weight: bold;")
+        top_bar.addWidget(powered)
 
-        layout_box = QGroupBox("Sheet Layout / شیٹ سائز")
-        layout_form = QFormLayout(layout_box)
+        top_widget = QWidget()
+        top_widget.setLayout(top_bar)
+        top_widget.setStyleSheet("""
+            QWidget { background: #1e1e2e; }
+            QLabel { color: #cdd6f4; font-size: 11px; }
+            QPushButton { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                          border-radius: 3px; padding: 3px 8px; font-size: 11px; }
+            QPushButton:hover { background: #45475a; }
+            QPushButton:pressed { background: #181825; }
+            QPushButton:checked { background: #1a4d8f; color: white; }
+            QComboBox { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                        border-radius: 3px; padding: 2px 6px; font-size: 11px; }
+            QDoubleSpinBox { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                             border-radius: 3px; padding: 2px 4px; font-size: 11px; }
+            QLineEdit { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                        border-radius: 3px; padding: 2px 6px; font-size: 11px; }
+            QCheckBox { color: #cdd6f4; }
+            QFrame { background: #45475a; }
+        """)
+        main_layout.addWidget(top_widget)
+
+        # ===== CANVAS (full width, dark background) =====
+        self.preview_stack = QStackedWidget()
+        self.preview_scroll = QScrollArea()
+        self.preview_scroll.setWidgetResizable(True)
+        self.preview_scroll.setAlignment(Qt.AlignCenter)
+        self.preview_scroll.setStyleSheet("background: #181825;")
+        self.preview_label = QLabel()
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setMinimumSize(400, 300)
+        self.preview_scroll.setWidget(self.preview_label)
+        self.preview_stack.addWidget(self.preview_scroll)
+
+        self.editor_scene = None
+        self.editor_view = None
+        self._editor_initialized = False
+
+        main_layout.addWidget(self.preview_stack, 1)
+
+        # ===== BOTTOM BAR (layout + size + logo + print) =====
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setContentsMargins(6, 4, 6, 4)
+        bottom_bar.setSpacing(6)
+
+        # Layout selector
         self.layout_combo = QComboBox()
         for key, lay in SHEET_PRESETS.items():
             self.layout_combo.addItem(lay.name, key)
         for key, lay in LABEL_PRESETS.items():
             self.layout_combo.addItem(lay.name, key)
-        self.layout_combo.addItem("Custom (set in Settings)...", "__custom__")
+        self.layout_combo.addItem("Custom...", "__custom__")
+        self.layout_combo.setMaximumWidth(200)
         idx = self.layout_combo.findData(self.layout_key)
-        if idx >= 0:
-            self.layout_combo.setCurrentIndex(idx)
+        if idx >= 0: self.layout_combo.setCurrentIndex(idx)
         self.layout_combo.currentIndexChanged.connect(self.on_layout_changed)
-        layout_form.addRow("Layout:", self.layout_combo)
+        bottom_bar.addWidget(QLabel("Layout:"))
+        bottom_bar.addWidget(self.layout_combo)
 
-        self.layout_info = QLabel("")
-        self.layout_info.setStyleSheet("color: #1a4d8f; font-size: 11px; font-weight: bold;")
-        layout_form.addRow("", self.layout_info)
-
-        self.edit_layout_btn = QPushButton("✏ Edit Sticker Layout\nاسٹیکر لی آؤٹ ایڈیٹ کریں")
-        self.edit_layout_btn.setStyleSheet("background: #f0f0f0; padding: 6px;")
-        self.edit_layout_btn.clicked.connect(self.on_edit_layout_clicked)
-        layout_form.addRow("", self.edit_layout_btn)
-
-        self.copies_spin = QSpinBox()
-        self.copies_spin.setRange(1, 999)
-        self.copies_spin.setValue(1)
-        self.copies_spin.valueChanged.connect(lambda _: self._refresh_preview())
-        layout_form.addRow("Print copies:", self.copies_spin)
-
-        # Manual sticker size input
-        size_row = QHBoxLayout()
+        # Manual size
         self.sticker_w_input = QDoubleSpinBox()
-        self.sticker_w_input.setRange(5, 500)
-        self.sticker_w_input.setDecimals(1)
-        self.sticker_w_input.setSuffix(" mm")
-        self.sticker_w_input.setToolTip("Sticker Width")
+        self.sticker_w_input.setRange(5, 500); self.sticker_w_input.setDecimals(1)
+        self.sticker_w_input.setSuffix("mm"); self.sticker_w_input.setMaximumWidth(70)
         self.sticker_w_input.valueChanged.connect(self._on_manual_size_changed)
-        size_row.addWidget(QLabel("W:"))
-        size_row.addWidget(self.sticker_w_input)
+        bottom_bar.addWidget(QLabel("W:"))
+        bottom_bar.addWidget(self.sticker_w_input)
         self.sticker_h_input = QDoubleSpinBox()
-        self.sticker_h_input.setRange(3, 500)
-        self.sticker_h_input.setDecimals(1)
-        self.sticker_h_input.setSuffix(" mm")
-        self.sticker_h_input.setToolTip("Sticker Height")
+        self.sticker_h_input.setRange(3, 500); self.sticker_h_input.setDecimals(1)
+        self.sticker_h_input.setSuffix("mm"); self.sticker_h_input.setMaximumWidth(70)
         self.sticker_h_input.valueChanged.connect(self._on_manual_size_changed)
-        size_row.addWidget(QLabel("H:"))
-        size_row.addWidget(self.sticker_h_input)
-        layout_form.addRow("Sticker Size:", size_row)
+        bottom_bar.addWidget(QLabel("H:"))
+        bottom_bar.addWidget(self.sticker_h_input)
 
-        left_layout.addWidget(layout_box)
-
-        # Logo upload button
-        logo_row = QHBoxLayout()
-        self.logo_btn = QPushButton("🖼 Add Logo / لوگو شامل کریں")
-        self.logo_btn.setStyleSheet(
-            "background: #f0f4fa; color: #1a4d8f; padding: 8px; "
-            "border: 2px dashed #1a4d8f; font-weight: bold;"
-        )
+        # Logo
+        self.logo_btn = QPushButton("🖼 Logo")
         self.logo_btn.clicked.connect(self.on_logo_clicked)
-        logo_row.addWidget(self.logo_btn)
-
-        self.remove_logo_btn = QPushButton("✖ Remove Logo")
+        bottom_bar.addWidget(self.logo_btn)
+        self.remove_logo_btn = QPushButton("✖")
+        self.remove_logo_btn.setMaximumWidth(28)
         self.remove_logo_btn.clicked.connect(self.on_remove_logo_clicked)
-        logo_row.addWidget(self.remove_logo_btn)
-        left_layout.addLayout(logo_row)
+        bottom_bar.addWidget(self.remove_logo_btn)
 
-        # Edit mode is now ALWAYS ON — preview is always interactive
-        # No toggle button needed (Canva-like behavior)
+        bottom_bar.addWidget(self._make_separator())
 
-        # Print buttons — three options (Print button is prominent)
-        print_row = QHBoxLayout()
-        # Main Print button — prominent orange/red gradient
-        self.print_btn = QPushButton("🖨  PRINT\nپرنٹ")
+        # CSV
+        self.import_btn = QPushButton("📂 CSV")
+        self.import_btn.clicked.connect(self.on_import_csv)
+        bottom_bar.addWidget(self.import_btn)
+        self.template_btn = QPushButton("📝 Template")
+        self.template_btn.clicked.connect(self.on_save_template)
+        bottom_bar.addWidget(self.template_btn)
+        self.fill_sheet_btn = QPushButton("📋 Fill")
+        self.fill_sheet_btn.setMaximumWidth(50)
+        self.fill_sheet_btn.clicked.connect(self.on_fill_sheet_clicked)
+        bottom_bar.addWidget(self.fill_sheet_btn)
+
+        bottom_bar.addStretch(1)
+
+        # Print buttons
+        self.print_btn = QPushButton("🖨 PRINT")
         self.print_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ff7043, stop:1 #d84315);
-                color: white; padding: 14px 18px;
-                font-size: 14px; font-weight: bold;
-                border: none; border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ff8a65, stop:1 #e64a19);
-            }
-            QPushButton:pressed {
-                background: #bf360c;
-            }
+            QPushButton { background: #f38ba8; color: #1e1e2e; font-weight: bold;
+                          border-radius: 4px; padding: 6px 16px; font-size: 12px; }
+            QPushButton:hover { background: #eba0ac; }
         """)
         self.print_btn.clicked.connect(self.on_print_clicked)
-        print_row.addWidget(self.print_btn)
-
-        # Quick Print — secondary green
-        self.quick_print_btn = QPushButton("⚡ Quick\nفوری")
-        self.quick_print_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #66bb6a, stop:1 #2e7d32);
-                color: white; padding: 14px;
-                font-weight: bold; border: none; border-radius: 6px;
-            }
-            QPushButton:hover { background: #43a047; }
-            QPushButton:pressed { background: #1b5e20; }
-        """)
-        self.quick_print_btn.clicked.connect(self.on_quick_print_clicked)
-        print_row.addWidget(self.quick_print_btn)
-
-        # PDF — tertiary amber
-        self.pdf_btn = QPushButton("📄 PDF\nPDF")
+        bottom_bar.addWidget(self.print_btn)
+        self.pdf_btn = QPushButton("📄 PDF")
         self.pdf_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ffb74d, stop:1 #e68900);
-                color: white; padding: 14px;
-                font-weight: bold; border: none; border-radius: 6px;
-            }
-            QPushButton:hover { background: #f57c00; }
-            QPushButton:pressed { background: #b85c00; }
+            QPushButton { background: #fab387; color: #1e1e2e; font-weight: bold;
+                          border-radius: 4px; padding: 6px 12px; font-size: 12px; }
+            QPushButton:hover { background: #f5b895; }
         """)
         self.pdf_btn.clicked.connect(self.on_save_pdf_clicked)
-        print_row.addWidget(self.pdf_btn)
-        left_layout.addLayout(print_row)
-
-        # Preview button (separate row, smaller)
-        prev_row = QHBoxLayout()
-        self.preview_btn = QPushButton("👁 Preview / پریویو")
-        self.preview_btn.clicked.connect(self.on_preview_clicked)
-        prev_row.addWidget(self.preview_btn)
-        prev_row.addStretch(1)
-        left_layout.addLayout(prev_row)
-
-        sec_row = QHBoxLayout()
-        self.settings_btn = QPushButton("⚙ Settings")
-        self.settings_btn.clicked.connect(self.on_settings_clicked)
-        sec_row.addWidget(self.settings_btn)
-        self.history_btn = QPushButton("📜 History")
-        self.history_btn.clicked.connect(self.on_history_clicked)
-        sec_row.addWidget(self.history_btn)
-        left_layout.addLayout(sec_row)
-
-        left_layout.addStretch(1)
-
-        # ---- right: toolbar + large canvas + compact items ----
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(2)
-
-        # ===== TOP TOOLBAR (Photoshop/InDesign style — one line) =====
-        toolbar = QHBoxLayout()
-        toolbar.setContentsMargins(4, 2, 4, 2)
-        toolbar.setSpacing(4)
-
-        # Font family
-        self.toolbar_font = QComboBox()
-        self.toolbar_font.addItems(QFontDatabase().families())
-        self.toolbar_font.setMaximumWidth(140)
-        self.toolbar_font.setToolTip("Font Family")
-        self.toolbar_font.currentTextChanged.connect(self._toolbar_font_changed)
-        toolbar.addWidget(QLabel("Font:"))
-        toolbar.addWidget(self.toolbar_font)
-
-        # Font size
-        self.toolbar_size = QDoubleSpinBox()
-        self.toolbar_size.setRange(2, 72)
-        self.toolbar_size.setDecimals(1)
-        self.toolbar_size.setSuffix("pt")
-        self.toolbar_size.setMaximumWidth(65)
-        self.toolbar_size.setToolTip("Font Size")
-        self.toolbar_size.valueChanged.connect(self._toolbar_font_changed)
-        toolbar.addWidget(self.toolbar_size)
-
-        # Bold toggle
-        self.toolbar_bold = QPushButton("B")
-        self.toolbar_bold.setCheckable(True)
-        self.toolbar_bold.setMaximumWidth(30)
-        self.toolbar_bold.setStyleSheet("font-weight: bold;")
-        self.toolbar_bold.setToolTip("Bold")
-        self.toolbar_bold.toggled.connect(self._toolbar_font_changed)
-        toolbar.addWidget(self.toolbar_bold)
-
-        # Italic toggle
-        self.toolbar_italic = QPushButton("I")
-        self.toolbar_italic.setCheckable(True)
-        self.toolbar_italic.setMaximumWidth(30)
-        self.toolbar_italic.setStyleSheet("font-style: italic;")
-        self.toolbar_italic.setToolTip("Italic")
-        self.toolbar_italic.toggled.connect(self._toolbar_font_changed)
-        toolbar.addWidget(self.toolbar_italic)
-
-        # Separator
-        toolbar.addWidget(self._make_separator())
-
-        # Align buttons
-        self.toolbar_align_left = QPushButton("⬅")
-        self.toolbar_align_left.setMaximumWidth(30)
-        self.toolbar_align_left.setToolTip("Align Left")
-        self.toolbar_align_left.clicked.connect(lambda: self._toolbar_align('left'))
-        toolbar.addWidget(self.toolbar_align_left)
-        self.toolbar_align_center = QPushButton("↔")
-        self.toolbar_align_center.setMaximumWidth(30)
-        self.toolbar_align_center.setToolTip("Align Center")
-        self.toolbar_align_center.clicked.connect(lambda: self._toolbar_align('center'))
-        toolbar.addWidget(self.toolbar_align_center)
-        self.toolbar_align_right = QPushButton("➡")
-        self.toolbar_align_right.setMaximumWidth(30)
-        self.toolbar_align_right.setToolTip("Align Right")
-        self.toolbar_align_right.clicked.connect(lambda: self._toolbar_align('right'))
-        toolbar.addWidget(self.toolbar_align_right)
-
-        # Color
-        self.toolbar_color = QPushButton("🎨")
-        self.toolbar_color.setMaximumWidth(35)
-        self.toolbar_color.setToolTip("Text Color")
-        self.toolbar_color.clicked.connect(self.on_elem_color_clicked)
-        toolbar.addWidget(self.toolbar_color)
-
-        # Separator
-        toolbar.addWidget(self._make_separator())
-
-        # Rotate buttons
-        self.toolbar_rot_left = QPushButton("↺")
-        self.toolbar_rot_left.setMaximumWidth(30)
-        self.toolbar_rot_left.setToolTip("Rotate -90°")
-        self.toolbar_rot_left.clicked.connect(lambda: self._toolbar_rotate(-90))
-        toolbar.addWidget(self.toolbar_rot_left)
-        self.toolbar_rot_right = QPushButton("↻")
-        self.toolbar_rot_right.setMaximumWidth(30)
-        self.toolbar_rot_right.setToolTip("Rotate +90°")
-        self.toolbar_rot_right.clicked.connect(lambda: self._toolbar_rotate(90))
-        toolbar.addWidget(self.toolbar_rot_right)
-
-        # Separator
-        toolbar.addWidget(self._make_separator())
-
-        # Zoom controls
-        self.zoom_out_btn = QPushButton("−")
-        self.zoom_out_btn.setMaximumWidth(30)
-        self.zoom_out_btn.setToolTip("Zoom Out")
-        self.zoom_out_btn.clicked.connect(self.on_zoom_out)
-        toolbar.addWidget(self.zoom_out_btn)
-        self.zoom_label = QLabel("100%")
-        self.zoom_label.setMinimumWidth(45)
-        self.zoom_label.setAlignment(Qt.AlignCenter)
-        self.zoom_label.setStyleSheet("color: #555; font-size: 11px;")
-        toolbar.addWidget(self.zoom_label)
-        self.zoom_in_btn = QPushButton("+")
-        self.zoom_in_btn.setMaximumWidth(30)
-        self.zoom_in_btn.setToolTip("Zoom In")
-        self.zoom_in_btn.clicked.connect(self.on_zoom_in)
-        toolbar.addWidget(self.zoom_in_btn)
-        self.zoom_fit_btn = QPushButton("Fit")
-        self.zoom_fit_btn.setMaximumWidth(40)
-        self.zoom_fit_btn.setToolTip("Fit to Window")
-        self.zoom_fit_btn.clicked.connect(self.on_zoom_fit)
-        toolbar.addWidget(self.zoom_fit_btn)
-
-        # Sticker border/frame option
-        self.toolbar_border = QPushButton("🔲")
-        self.toolbar_border.setMaximumWidth(35)
-        self.toolbar_border.setToolTip("Sticker Border / Frame")
-        self.toolbar_border.clicked.connect(self._toggle_border)
-        toolbar.addWidget(self.toolbar_border)
-
-        # Separator
-        toolbar.addWidget(self._make_separator())
-
-        # Selected element label (right side)
-        toolbar.addStretch(1)
-        self.selected_elem_label = QLabel("No element selected — click on sticker to select")
-        self.selected_elem_label.setStyleSheet("color: #888; font-size: 11px; padding: 2px;")
-        toolbar.addWidget(self.selected_elem_label)
-
-        toolbar_widget = QWidget()
-        toolbar_widget.setLayout(toolbar)
-        toolbar_widget.setStyleSheet("""
-            QWidget { background: #f0f0f0; border-bottom: 1px solid #ccc; }
-            QPushButton { padding: 2px 6px; font-size: 11px; }
-            QComboBox { padding: 1px 4px; font-size: 11px; }
-            QDoubleSpinBox { padding: 1px 4px; font-size: 11px; }
+        bottom_bar.addWidget(self.pdf_btn)
+        self.quick_print_btn = QPushButton("⚡ Quick")
+        self.quick_print_btn.setStyleSheet("""
+            QPushButton { background: #a6e3a1; color: #1e1e2e; font-weight: bold;
+                          border-radius: 4px; padding: 6px 12px; font-size: 12px; }
+            QPushButton:hover { background: #b3e6ad; }
         """)
-        right_layout.addWidget(toolbar_widget)
+        self.quick_print_btn.clicked.connect(self.on_quick_print_clicked)
+        bottom_bar.addWidget(self.quick_print_btn)
 
-        # ===== CANVAS (large — takes most space) =====
-        self.preview_stack = QStackedWidget()
+        bottom_widget = QWidget()
+        bottom_widget.setLayout(bottom_bar)
+        bottom_widget.setStyleSheet("""
+            QWidget { background: #1e1e2e; }
+            QLabel { color: #cdd6f4; font-size: 11px; }
+            QPushButton { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                          border-radius: 3px; padding: 4px 10px; font-size: 11px; }
+            QPushButton:hover { background: #45475a; }
+            QComboBox { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                        border-radius: 3px; padding: 2px 6px; font-size: 11px; }
+            QDoubleSpinBox { background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+                             border-radius: 3px; padding: 2px 4px; font-size: 11px; }
+            QFrame { background: #45475a; }
+        """)
+        main_layout.addWidget(bottom_widget)
 
-        # Index 0: Static preview (QLabel in scroll area)
-        self.preview_scroll = QScrollArea()
-        self.preview_scroll.setWidgetResizable(True)
-        self.preview_scroll.setAlignment(Qt.AlignCenter)
-        self.preview_scroll.setBackgroundRole(QPalette.Mid)
-        self.preview_label = QLabel()
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setMinimumSize(200, 200)
-        self.preview_label.setStyleSheet("background: #999;")
-        self.preview_scroll.setWidget(self.preview_label)
-        self.preview_stack.addWidget(self.preview_scroll)
-
-        # Index 1: Interactive editor
-        from ui.sticker_editor import StickerScene
-        self.editor_scene = None
-        self.editor_view = None
-        self._editor_initialized = False
-
-        right_layout.addWidget(self.preview_stack, 1)  # stretches to fill
-
-        # ===== COMPACT items bar (single line) =====
-        items_bar = QHBoxLayout()
-        items_bar.setContentsMargins(4, 0, 4, 0)
-        self.count_label = QLabel("0 stickers")
-        self.count_label.setStyleSheet("font-size: 11px; color: #333;")
-        items_bar.addWidget(self.count_label)
-        items_bar.addStretch(1)
-        self.fill_sheet_btn = QPushButton("📋 Fill")
-        self.fill_sheet_btn.setMaximumWidth(60)
-        self.fill_sheet_btn.setToolTip("Fill Sheet")
-        self.fill_sheet_btn.setStyleSheet("font-size: 11px;")
-        self.fill_sheet_btn.clicked.connect(self.on_fill_sheet_clicked)
-        items_bar.addWidget(self.fill_sheet_btn)
-        self.del_sel_btn = QPushButton("✖")
-        self.del_sel_btn.setMaximumWidth(30)
-        self.del_sel_btn.setToolTip("Remove Selected")
-        self.del_sel_btn.clicked.connect(self.on_remove_selected)
-        items_bar.addWidget(self.del_sel_btn)
-        self.del_all_btn = QPushButton("Clear")
-        self.del_all_btn.setMaximumWidth(50)
-        self.del_all_btn.setStyleSheet("font-size: 11px;")
-        self.del_all_btn.clicked.connect(self.on_clear_clicked)
-        items_bar.addWidget(self.del_all_btn)
-        items_widget = QWidget()
-        items_widget.setLayout(items_bar)
-        items_widget.setStyleSheet("QWidget { background: #f0f0f0; border-top: 1px solid #ccc; }")
-        right_layout.addWidget(items_widget)
-
-        # Items table (very compact — 3 rows max visible)
+        # Hidden form fields (kept for data compatibility, not visible)
+        self.company_edit = QLineEdit(self.default_company)
+        self.product_edit = QLineEdit()
+        self.code_edit = QLineEdit()
+        self.mobile_edit = QLineEdit(self.default_mobile)
+        self.price_edit = QLineEdit()
+        self.mfg_date = QDateEdit()
+        self.mfg_date.setDate(QDate.currentDate())
+        self.exp_date = QDateEdit()
+        self.exp_date.setDate(QDate.currentDate().addMonths(12))
+        self.copies_spin = QSpinBox()
+        self.copies_spin.setValue(1)
+        self.qty_spin = QSpinBox()
+        self.qty_spin.setValue(1)
+        self.add_btn = QPushButton()
+        self.clear_btn = QPushButton()
+        self.edit_layout_btn = QPushButton()
+        self.settings_btn = QPushButton()
+        self.history_btn = QPushButton()
+        self.preview_btn = QPushButton()
+        self.del_sel_btn = QPushButton()
+        self.del_all_btn = QPushButton()
+        self.price_enabled_chk = QCheckBox()
+        self.price_enabled_chk.setChecked(False)
+        self.company_enabled_chk = QCheckBox(); self.company_enabled_chk.setChecked(True)
+        self.product_name_enabled_chk = QCheckBox(); self.product_name_enabled_chk.setChecked(True)
+        self.code_enabled_chk = QCheckBox(); self.code_enabled_chk.setChecked(True)
+        self.dates_enabled_chk = QCheckBox(); self.dates_enabled_chk.setChecked(True)
+        self.mobile_enabled_chk = QCheckBox(); self.mobile_enabled_chk.setChecked(True)
+        self.bulk_status = QLabel()
         self.items_model = QStandardItemModel(0, 3)
         self.items_model.setHorizontalHeaderLabels(["#", "Barcode", "Product"])
         self.items_table = QTableView()
         self.items_table.setModel(self.items_model)
-        self.items_table.setMaximumHeight(60)
-        self.items_table.setSelectionBehavior(QTableView.SelectRows)
-        self.items_table.setEditTriggers(QTableView.NoEditTriggers)
-        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.items_table.verticalHeader().setVisible(False)
-        right_layout.addWidget(self.items_table)
+        self.items_table.setMaximumHeight(0)  # hidden
+        self.count_label = QLabel("0 stickers")
+        self.layout_info = QLabel()
 
-        # Keep references to old props panel variables for compatibility
-        # (methods reference them — we redirect to toolbar)
+        # Keep references for compatibility
         self.props_panel = None
         self.elem_combo = None
         self.elem_enabled_chk = None
-        self.elem_x = None
-        self.elem_y = None
-        self.elem_w = None
-        self.elem_h = None
+        self.elem_x = None; self.elem_y = None; self.elem_w = None; self.elem_h = None
         self.elem_rot = None
         self.font_box = None
-        self.font_family = self.toolbar_font  # redirect
-        self.font_size_spin = self.toolbar_size  # redirect
-        self.bold_chk = self.toolbar_bold  # redirect (checkable button)
-        self.italic_chk = self.toolbar_italic  # redirect
+        self.font_family = self.toolbar_font
+        self.font_size_spin = self.toolbar_size
+        self.bold_chk = self.toolbar_bold
+        self.italic_chk = self.toolbar_italic
         self.image_box = None
         self.image_fit_combo = None
         self.load_image_btn = None
+        self.preview_label_title = QLabel()
 
-        # ---- Wrap left panel in scroll area for small screens ----
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setWidget(left_inner)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        left_scroll.setMinimumWidth(380)
-        left_scroll.setMaximumWidth(460)
-
-        # ---- Wrap right panel in scroll area too ----
-        right_scroll = QScrollArea()
-        right_scroll.setWidgetResizable(True)
-        right_scroll.setWidget(right)
-        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        right_scroll.setMinimumWidth(400)
-
-        # ---- Add to splitter ----
-        self.splitter.addWidget(left_scroll)
-        self.splitter.addWidget(right_scroll)
-        # Set sizes — left smaller, right bigger
-        self.splitter.setStretchFactor(0, 1)
-        self.splitter.setStretchFactor(1, 3)
-        self.splitter.setSizes([460, 820])
-
-        central_layout = QVBoxLayout(central)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.addWidget(self.splitter)
-
+        # Status bar
         self._build_statusbar()
-        self._update_layout_info()
 
-        # Initialize the inline editor immediately (always interactive)
+        # Keyboard shortcuts
+        self._setup_shortcuts()
+
+        # Initialize editor
         self._init_inline_editor()
-        self._populate_elem_combo()
-        # Show editor view (index 1) by default
-        if self.editor_view:
-            self.preview_stack.setCurrentIndex(1)
-            QTimer.singleShot(50, self._fit_editor_view)
+        QTimer.singleShot(50, self._fit_editor_view)
+        self._update_layout_info()
 
     def _build_statusbar(self):
         sb = QStatusBar()
@@ -714,6 +474,64 @@ class MainWindow(QMainWindow):
         )
 
     # ----------------------------------------------------- barcode toggle
+    def _setup_shortcuts(self):
+        """Setup keyboard shortcuts: Ctrl+C/V/X/Z/A."""
+        from PyQt5.QtWidgets import QShortcut
+        from PyQt5.QtGui import QKeySequence
+        QShortcut(QKeySequence.Copy, self, self._copy_element)
+        QShortcut(QKeySequence.Paste, self, self._paste_element)
+        QShortcut(QKeySequence.Cut, self, self._cut_element)
+        QShortcut(QKeySequence.Undo, self, self._undo_change)
+        QShortcut(QKeySequence.SelectAll, self, self._select_all)
+
+    def _copy_element(self):
+        """Ctrl+C — copy selected element."""
+        e = self._selected_elem()
+        if e:
+            import copy
+            self._clipboard = copy.deepcopy(e)
+            self.statusBar().showMessage(f"Copied: {e.label}", 2000)
+
+    def _paste_element(self):
+        """Ctrl+V — paste copied element."""
+        if hasattr(self, '_clipboard') and self._clipboard:
+            import copy
+            new_elem = copy.deepcopy(self._clipboard)
+            new_elem.x_mm += 2  # offset
+            new_elem.y_mm += 2
+            new_elem.id = f"custom_{id(new_elem)}"
+            new_elem.label = f"{self._clipboard.label} (copy)"
+            self.template.elements.append(new_elem)
+            self._refresh_editor()
+            self.db.set_setting('sticker_template_json',
+                                template_to_json(self.template))
+            self.statusBar().showMessage(f"Pasted: {new_elem.label}", 2000)
+
+    def _cut_element(self):
+        """Ctrl+X — cut selected element."""
+        self._copy_element()
+        e = self._selected_elem()
+        if e and e.id not in ('barcode', 'barcode_digits'):
+            self.template.elements.remove(e)
+            self._refresh_editor()
+            self.statusBar().showMessage(f"Cut: {e.label}", 2000)
+
+    def _undo_change(self):
+        """Ctrl+Z — undo (revert to last saved template)."""
+        saved = self.db.get_setting('sticker_template_json', '')
+        if saved:
+            self.template = template_from_json(saved)
+            self._refresh_editor()
+            self.statusBar().showMessage("Undo", 2000)
+
+    def _select_all(self):
+        """Ctrl+A — select all elements."""
+        if self.editor_scene:
+            from ui.sticker_editor import ElementItem
+            for it in self.editor_scene.items():
+                if isinstance(it, ElementItem):
+                    it.setSelected(True)
+
     def _make_separator(self):
         """Create a vertical separator line for the toolbar."""
         sep = QFrame()
