@@ -1,5 +1,5 @@
 ; ============================================================
-;  Barcode Generator Pro v4.0.0 - Inno Setup Script
+;  Barcode Generator Pro v4.1.0 - Inno Setup Script
 ;  Produces BarcodeGeneratorPro_Setup.exe
 ; ============================================================
 

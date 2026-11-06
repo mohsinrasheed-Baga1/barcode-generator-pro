@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "4.0.0"
+APP_VERSION = "4.1.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -157,15 +157,15 @@ class MainWindow(QMainWindow):
         # Barcode input + type + include
         top_bar.addWidget(QLabel("Barcode:"))
         self.barcode_edit = QLineEdit()
-        self.barcode_edit.setMaximumWidth(120)
-        self.barcode_edit.setPlaceholderText("Enter number")
+        self.barcode_edit.setMaximumWidth(100)
+        self.barcode_edit.setPlaceholderText("Number")
         self.barcode_edit.textChanged.connect(lambda _: self._live_update())
         top_bar.addWidget(self.barcode_edit)
         self.barcode_type_combo = QComboBox()
         from core.barcode_gen import get_barcode_types_list
         for key, label in get_barcode_types_list():
             self.barcode_type_combo.addItem(label, key)
-        self.barcode_type_combo.setMaximumWidth(120)
+        self.barcode_type_combo.setMaximumWidth(110)
         self.barcode_type_combo.currentIndexChanged.connect(lambda _: self._on_barcode_type_changed())
         top_bar.addWidget(self.barcode_type_combo)
         self.barcode_enabled_chk = QCheckBox("BC")
@@ -173,6 +173,14 @@ class MainWindow(QMainWindow):
         self.barcode_enabled_chk.setToolTip("Include Barcode")
         self.barcode_enabled_chk.toggled.connect(self.on_barcode_enabled_toggled)
         top_bar.addWidget(self.barcode_enabled_chk)
+
+        # T — Text tool button (add custom text on canvas)
+        self.text_tool_btn = QPushButton("T")
+        self.text_tool_btn.setMaximumWidth(30)
+        self.text_tool_btn.setToolTip("Add Text (click to insert text element)")
+        self.text_tool_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.text_tool_btn.clicked.connect(self._add_text_element)
+        top_bar.addWidget(self.text_tool_btn)
 
         top_bar.addWidget(self._make_separator())
 
@@ -450,6 +458,9 @@ class MainWindow(QMainWindow):
 
         # Initialize editor
         self._init_inline_editor()
+        # CRITICAL: Show editor (index 1), not static preview (index 0)
+        if self.preview_stack.count() > 1:
+            self.preview_stack.setCurrentIndex(1)
         QTimer.singleShot(50, self._fit_editor_view)
         self._update_layout_info()
 
@@ -474,6 +485,38 @@ class MainWindow(QMainWindow):
         )
 
     # ----------------------------------------------------- barcode toggle
+    def _add_text_element(self):
+        """T button — add a custom text element at the center of the first sticker slot."""
+        from core.templates import StickerElement
+        lay = self._current_layout()
+        # Position at center of first sticker
+        cx = lay.sticker_w_mm / 2 - 10  # offset so text is roughly centered
+        cy = lay.sticker_h_mm / 2 - 2
+        # Create a unique ID
+        import time
+        elem_id = f"text_{int(time.time() * 1000)}"
+        new_elem = StickerElement(
+            id=elem_id,
+            label='Text / ٹیکسٹ',
+            enabled=True,
+            x_mm=cx, y_mm=cy,
+            w_mm=20, h_mm=4,
+            font_family='Arial',
+            font_size_pt=7.0,
+            bold=False,
+            align='center',
+        )
+        # Set the text content by adding it to sample_data
+        # We use a special key that matches the element id
+        if not hasattr(self, '_custom_texts'):
+            self._custom_texts = {}
+        self._custom_texts[elem_id] = "Click to edit text"
+        self.template.elements.append(new_elem)
+        self._refresh_editor()
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+        self.statusBar().showMessage("Text added — click on it to select, then change text in toolbar", 3000)
+
     def _setup_shortcuts(self):
         """Setup keyboard shortcuts: Ctrl+C/V/X/Z/A."""
         from PyQt5.QtWidgets import QShortcut
@@ -1258,7 +1301,7 @@ class MainWindow(QMainWindow):
         self._editor_initialized = True
 
     def _build_sample_data(self):
-        return {
+        data = {
             'company_name': self.company_edit.text() or '',
             'product_name': self.product_edit.text() or '',
             'product_code': self.code_edit.text() or '',
@@ -1268,6 +1311,10 @@ class MainWindow(QMainWindow):
             'mobile': self.mobile_edit.text() or '',
             'price': self.price_edit.text() if hasattr(self, 'price_edit') and self.price_enabled_chk.isChecked() else '',
         }
+        # Add custom text elements
+        if hasattr(self, '_custom_texts'):
+            data.update(self._custom_texts)
+        return data
 
     def _refresh_editor(self):
         """Rebuild the editor scene — preserves element selection."""
