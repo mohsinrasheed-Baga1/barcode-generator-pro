@@ -232,6 +232,12 @@ class ElementItem(QGraphicsRectItem):
 
     # ------------------------------------------------------ Mouse press
     def mousePressEvent(self, event):
+        # Right-click starts rotation mode
+        if event.button() == Qt.RightButton and self.isSelected():
+            self._rotate_dragging = True
+            self._resize_start_mouse = event.scenePos()
+            event.accept()
+            return
         # Check if press is on a handle
         if self.isSelected():
             pos = event.pos()  # local coords
@@ -269,6 +275,15 @@ class ElementItem(QGraphicsRectItem):
             super().mouseMoveEvent(event)
 
     # ------------------------------------------------------ Mouse release
+    def mouseDoubleClickEvent(self, event):
+        """Double-click on text element → edit text."""
+        if self.element.id in ('barcode', 'logo'):
+            super().mouseDoubleClickEvent(event)
+            return
+        # Emit signal to scene → main window handles text editing
+        self.parent_view.element_double_clicked.emit(self.element)
+        event.accept()
+
     def mouseReleaseEvent(self, event):
         if self._resize_handle is not None or self._rotate_dragging:
             self._resize_handle = None
@@ -380,7 +395,8 @@ class ElementItem(QGraphicsRectItem):
 class StickerScene(QGraphicsScene):
     element_selection_changed = pyqtSignal(object)
     element_changed = pyqtSignal(object)
-    element_layout_changed = pyqtSignal(object)  # emitted when resize/rotate completes
+    element_layout_changed = pyqtSignal(object)
+    element_double_clicked = pyqtSignal(object)  # for text editing
 
     def __init__(self, template: StickerTemplate, sample_data: dict,
                  layout=None, parent=None):
