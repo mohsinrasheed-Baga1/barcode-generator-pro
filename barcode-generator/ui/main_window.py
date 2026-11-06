@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "4.2.0"
+APP_VERSION = "4.3.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -518,7 +518,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Text added — click on it to select, then change text in toolbar", 3000)
 
     def _setup_shortcuts(self):
-        """Setup keyboard shortcuts: Ctrl+C/V/X/Z/A."""
+        """Setup keyboard shortcuts: Ctrl+C/V/X/Z/A/D/Delete."""
         from PyQt5.QtWidgets import QShortcut
         from PyQt5.QtGui import QKeySequence
         QShortcut(QKeySequence.Copy, self, self._copy_element)
@@ -526,6 +526,30 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.Cut, self, self._cut_element)
         QShortcut(QKeySequence.Undo, self, self._undo_change)
         QShortcut(QKeySequence.SelectAll, self, self._select_all)
+        QShortcut(QKeySequence("Ctrl+D"), self, self._delete_selected)
+        QShortcut(QKeySequence.Delete, self, self._delete_selected)
+
+    def _delete_selected(self):
+        """Ctrl+D / Delete — delete all selected elements from template."""
+        if not self.editor_scene:
+            return
+        from ui.sticker_editor import ElementItem
+        to_delete = []
+        for it in self.editor_scene.items():
+            if isinstance(it, ElementItem) and it.isSelected():
+                to_delete.append(it.element)
+        if not to_delete:
+            return
+        for elem in to_delete:
+            if elem in self.template.elements:
+                self.template.elements.remove(elem)
+            # Also clean up custom texts
+            if hasattr(self, '_custom_texts') and elem.id in self._custom_texts:
+                del self._custom_texts[elem.id]
+        self.db.set_setting('sticker_template_json',
+                            template_to_json(self.template))
+        self._refresh_editor()
+        self.statusBar().showMessage(f"Deleted {len(to_delete)} element(s)", 2000)
 
     def _copy_element(self):
         """Ctrl+C — copy selected element."""

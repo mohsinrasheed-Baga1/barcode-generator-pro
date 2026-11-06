@@ -174,9 +174,9 @@ class ElementItem(QGraphicsRectItem):
 
     def paint(self, painter: QPainter, option, widget=None):
         rect = self.rect()
-        # Selection border
-        if self.isSelected():
-            pen = QPen(QColor('#1a4d8f'), 0.5)  # thinner border (was 1.0)
+        # Only draw selection border + handles when selected AND element is enabled
+        if self.isSelected() and self.element.enabled:
+            pen = QPen(QColor('#1a4d8f'), 0.5)
             pen.setStyle(Qt.SolidLine)
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
@@ -185,13 +185,12 @@ class ElementItem(QGraphicsRectItem):
             cx = rect.center().x()
             painter.drawLine(QPointF(cx, rect.top()),
                              QPointF(cx, rect.top() - ROTATE_HANDLE_DISTANCE))
-        else:
-            # Unselected: thin dashed border
-            pen = QPen(QColor('#999'), 0.5, Qt.DashLine)
+        elif not self.element.enabled:
+            # Disabled element — show faint gray dashed border
+            pen = QPen(QColor('#999'), 0.3, Qt.DashLine)
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(rect)
-
         # Draw content (text, barcode, or logo)
         data = self.parent_view.sample_data
         px_per_mm = 1.0 / self.mm_per_px
@@ -446,13 +445,29 @@ class StickerScene(QGraphicsScene):
             slot_x_px = sx * px_per_mm
             slot_y_px = sy * px_per_mm
 
-            # Slot outline (dashed)
+            # Slot outline — colored differently to distinguish sticker boundaries
+            # Light blue for sticker slot boundaries
             slot_rect = QGraphicsRectItem(slot_x_px, slot_y_px,
                                            slot_w_px, slot_h_px)
-            slot_rect.setPen(QPen(QColor('#cccccc'), 0.5, Qt.DashLine))
-            slot_rect.setBrush(QBrush(Qt.NoBrush))
+            slot_rect.setPen(QPen(QColor('#81d4fa'), 0.8, Qt.SolidLine))
+            slot_rect.setBrush(QBrush(Qt.white))
             slot_rect.setZValue(-1)
             self.addItem(slot_rect)
+            # Gap fill — light gray between stickers for visual separation
+            gap_fill = QGraphicsRectItem(slot_x_px + slot_w_px, slot_y_px,
+                                          (self.template.sticker_w_mm - slot_w_px/px_per_mm + 
+                                           (slots[idx+1][0] if idx+1 < len(slots) else self.layout.paper_w_mm) -
+                                           sx - self.template.sticker_w_mm) * px_per_mm if idx+1 < len(slots) else 0,
+                                          slot_h_px)
+            gap_fill.setBrush(QBrush(QColor('#e0e0e0')))
+            gap_fill.setPen(QPen(Qt.NoPen))
+            gap_fill.setZValue(-2)
+            if idx+1 < len(slots):
+                next_sx = slots[idx+1][0]
+                gap_w = (next_sx - sx - self.template.sticker_w_mm) * px_per_mm
+                if gap_w > 0:
+                    gap_fill.setRect(slot_x_px + slot_w_px, slot_y_px, gap_w, slot_h_px)
+                    self.addItem(gap_fill)
 
             if idx == 0:
                 # First slot: add INTERACTIVE ElementItems (editable)
@@ -463,11 +478,9 @@ class StickerScene(QGraphicsScene):
                     self.addItem(item)
             else:
                 # Other slots: render STATIC preview of sticker content
-                # using draw_sticker_with_template into a QPixmap
                 try:
                     from core.printer import draw_sticker_with_template
-                    # Use HIGH DPI for static previews so quality matches first sticker
-                    render_dpi = 300  # was 200 — higher quality for other slots
+                    render_dpi = 300
                     render_scale = render_dpi / 25.4
                     sticker_w_render = int(self.template.sticker_w_mm * render_scale)
                     sticker_h_render = int(self.template.sticker_h_mm * render_scale)
@@ -479,18 +492,16 @@ class StickerScene(QGraphicsScene):
                     draw_sticker_with_template(p, rect, self.sample_data,
                                                 self.template, render_scale)
                     p.end()
-                    # Scale pixmap to scene size and position at slot
                     pix_item = QGraphicsPixmapItem(pm)
-                    # Scale from render resolution to scene resolution
                     scene_scale = px_per_mm / render_scale
                     pix_item.setScale(scene_scale)
                     pix_item.setPos(slot_x_px, slot_y_px)
-                    pix_item.setZValue(5)  # above outlines, below interactive elements
+                    pix_item.setZValue(5)
                     pix_item.setFlag(QGraphicsItem.ItemIsSelectable, False)
                     pix_item.setFlag(QGraphicsItem.ItemIsMovable, False)
                     self.addItem(pix_item)
                 except Exception:
-                    pass  # If rendering fails, just show the outline
+                    pass
 
         self.setSceneRect(0, 0, pw, ph)
 
