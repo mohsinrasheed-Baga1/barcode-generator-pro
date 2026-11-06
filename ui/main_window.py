@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "4.1.0"
+APP_VERSION = "4.2.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -1297,6 +1297,7 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.editor_scene.element_selection_changed.connect(self._on_editor_selection_changed)
         self.editor_scene.element_changed.connect(self._on_editor_element_changed)
+        self.editor_scene.element_double_clicked.connect(self._on_element_double_clicked)
         self.preview_stack.addWidget(self.editor_view)
         self._editor_initialized = True
 
@@ -1370,6 +1371,50 @@ class MainWindow(QMainWindow):
             if isinstance(it, ElementItem) and it.isSelected():
                 return it.element
         return None
+
+    def _on_element_double_clicked(self, element):
+        """Double-click on text element → show edit dialog."""
+        if element.id in ('barcode', 'logo'):
+            return
+        # Get current text
+        data = self._build_sample_data()
+        current_text = data.get(element.id, '')
+        if not current_text and element.id in ('company_name', 'product_name',
+                                                'product_code', 'mobile', 'price'):
+            # For standard elements, use get_text_for_element
+            from core.templates import get_text_for_element
+            current_text = get_text_for_element(element.id, data)
+            # Strip prefixes like "Code: " or "Contact: "
+            for prefix in ['Code: ', 'Contact: ', 'Rs. ']:
+                if current_text.startswith(prefix):
+                    current_text = current_text[len(prefix):]
+                    break
+        # Show input dialog
+        from PyQt5.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            self, "Edit Text / ٹیکسٹ ایڈٹ کریں",
+            f"Text for '{element.label}':",
+            text=current_text
+        )
+        if ok and text != current_text:
+            # Update the text
+            if element.id.startswith('text_'):
+                # Custom text element
+                if not hasattr(self, '_custom_texts'):
+                    self._custom_texts = {}
+                self._custom_texts[element.id] = text
+            elif element.id == 'company_name':
+                self.company_edit.setText(text)
+            elif element.id == 'product_name':
+                self.product_edit.setText(text)
+            elif element.id == 'product_code':
+                self.code_edit.setText(text)
+            elif element.id == 'mobile':
+                self.mobile_edit.setText(text)
+            elif element.id == 'price':
+                self.price_edit.setText(text)
+            self._live_update()
+            self.statusBar().showMessage(f"Text updated: {text[:30]}", 2000)
 
     def _on_editor_selection_changed(self, element):
         """Called when an element is clicked in the graphics scene."""
