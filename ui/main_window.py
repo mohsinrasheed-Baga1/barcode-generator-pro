@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "4.3.0"
+APP_VERSION = "5.0.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -329,6 +329,16 @@ class MainWindow(QMainWindow):
         bottom_bar.addWidget(QLabel("H:"))
         bottom_bar.addWidget(self.sticker_h_input)
 
+        # Stickers per row (1/2/3/4) — roll layout
+        bottom_bar.addWidget(QLabel("Per Row:"))
+        self.stickers_per_row = QSpinBox()
+        self.stickers_per_row.setRange(1, 4)
+        self.stickers_per_row.setValue(1)
+        self.stickers_per_row.setMaximumWidth(40)
+        self.stickers_per_row.setToolTip("Stickers per row on the roll")
+        self.stickers_per_row.valueChanged.connect(self._on_stickers_per_row_changed)
+        bottom_bar.addWidget(self.stickers_per_row)
+
         # Logo
         self.logo_btn = QPushButton("🖼 Logo")
         self.logo_btn.clicked.connect(self.on_logo_clicked)
@@ -337,6 +347,18 @@ class MainWindow(QMainWindow):
         self.remove_logo_btn.setMaximumWidth(28)
         self.remove_logo_btn.clicked.connect(self.on_remove_logo_clicked)
         bottom_bar.addWidget(self.remove_logo_btn)
+
+        bottom_bar.addWidget(self._make_separator())
+
+        # Save/Open project
+        self.save_project_btn = QPushButton("💾 Save")
+        self.save_project_btn.setToolTip("Save Project")
+        self.save_project_btn.clicked.connect(self._save_project)
+        bottom_bar.addWidget(self.save_project_btn)
+        self.open_project_btn = QPushButton("📂 Open")
+        self.open_project_btn.setToolTip("Open Project")
+        self.open_project_btn.clicked.connect(self._open_project)
+        bottom_bar.addWidget(self.open_project_btn)
 
         bottom_bar.addWidget(self._make_separator())
 
@@ -854,6 +876,130 @@ class MainWindow(QMainWindow):
                                    f"Sample template saved to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    def _on_stickers_per_row_changed(self):
+        """When stickers per row changes, create a custom multi-column layout."""
+        n = self.stickers_per_row.value()
+        sw = self.sticker_w_input.value()
+        sh = self.sticker_h_input.value()
+        gap = 3.0  # 3mm gap between stickers
+        margin = 2.0  # 2mm margin
+        paper_w = margin * 2 + sw * n + gap * (n - 1) if n > 1 else sw
+        paper_h = sh
+        # Create custom layout
+        from core.layouts import custom_layout, StickerLayout
+        self.custom_layout = StickerLayout(
+            name=f'Custom Roll — {n} stickers per row ({sw}×{sh}mm)',
+            paper_w_mm=paper_w, paper_h_mm=paper_h,
+            margin_x_mm=margin, margin_y_mm=0,
+            gap_x_mm=gap if n > 1 else 0, gap_y_mm=0,
+            sticker_w_mm=sw, sticker_h_mm=sh,
+            cols=n, rows=1, is_label=True,
+        )
+        self.layout_key = '__custom__'
+        # Regenerate template
+        include_barcode = self.barcode_enabled_chk.isChecked()
+        include_price = self.price_enabled_chk.isChecked() if hasattr(self, 'price_enabled_chk') else False
+        bc_type = self.barcode_type_combo.currentData() if hasattr(self, 'barcode_type_combo') else 'ean13'
+        self.template = default_template(sw, sh, include_barcode=include_barcode,
+                                          include_price=include_price, barcode_type=bc_type)
+        self.db.set_setting('sticker_template_json', template_to_json(self.template))
+        self._update_layout_info()
+        self._refresh_preview()
+        self._refresh_editor()
+        self._update_statusbar()
+        self.statusBar().showMessage(f"Layout: {n} stickers per row, each {sw}×{sh}mm", 3000)
+
+    def _save_project(self):
+        """Save current project (template + items + layout) to .bgp file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Project", "", "Barcode Project (*.bgp)")
+        if not path:
+            return
+        try:
+            import json
+            project = {
+                'version': APP_VERSION,
+                'template': json.loads(template_to_json(self.template)),
+                'items': self.current_items,
+                'layout_key': self.layout_key,
+                'custom_layout': {
+                    'paper_w_mm': self._current_layout().paper_w_mm,
+                    'paper_h_mm': self._current_layout().paper_h_mm,
+                    'sticker_w_mm': self._current_layout().sticker_w_mm,
+                    'sticker_h_mm': self._current_layout().sticker_h_mm,
+                    'cols': self._current_layout().cols,
+                    'rows': self._current_layout().rows,
+                    'is_label': self._current_layout().is_label,
+                } if self.layout_key == '__custom__' else None,
+                'stickers_per_row': self.stickers_per_row.value() if hasattr(self, 'stickers_per_row') else 1,
+                'custom_texts': getattr(self, '_custom_texts', {}),
+            }
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(project, f, indent=2)
+            self.statusBar().showMessage(f"Project saved: {path}", 3000)
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Could not save project:\n{e}")
+
+    def _open_project(self):
+        """Open a .bgp project file."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Project", "", "Barcode Project (*.bgp)")
+        if not path:
+            return
+        try:
+            import json
+            with open(path, 'r', encoding='utf-8') as f:
+                project = json.load(f)
+            # Load template
+            self.template = template_from_json(json.dumps(project['template']))
+            # Load items
+            self.current_items = project.get('items', [])
+            # Load layout
+            cl = project.get('custom_layout')
+            if cl:
+                from core.layouts import StickerLayout
+                self.custom_layout = StickerLayout(
+                    name='Loaded Custom',
+                    paper_w_mm=cl['paper_w_mm'], paper_h_mm=cl['paper_h_mm'],
+                    margin_x_mm=2.0, margin_y_mm=0,
+                    gap_x_mm=3.0 if cl.get('cols', 1) > 1 else 0, gap_y_mm=0,
+                    sticker_w_mm=cl['sticker_w_mm'], sticker_h_mm=cl['sticker_h_mm'],
+                    cols=cl.get('cols', 1), rows=cl.get('rows', 1),
+                    is_label=cl.get('is_label', True),
+                )
+                self.layout_key = '__custom__'
+            else:
+                self.layout_key = project.get('layout_key', 'SPEEDX-32x25')
+                idx = self.layout_combo.findData(self.layout_key)
+                if idx >= 0:
+                    self.layout_combo.blockSignals(True)
+                    self.layout_combo.setCurrentIndex(idx)
+                    self.layout_combo.blockSignals(False)
+            # Load stickers per row
+            if hasattr(self, 'stickers_per_row'):
+                self.stickers_per_row.blockSignals(True)
+                self.stickers_per_row.setValue(project.get('stickers_per_row', 1))
+                self.stickers_per_row.blockSignals(False)
+            # Load custom texts
+            if project.get('custom_texts'):
+                self._custom_texts = project['custom_texts']
+            # Update size inputs
+            lay = self._current_layout()
+            if hasattr(self, 'sticker_w_input'):
+                self.sticker_w_input.blockSignals(True)
+                self.sticker_h_input.blockSignals(True)
+                self.sticker_w_input.setValue(lay.sticker_w_mm)
+                self.sticker_h_input.setValue(lay.sticker_h_mm)
+                self.sticker_w_input.blockSignals(False)
+                self.sticker_h_input.blockSignals(False)
+            # Refresh
+            self._refresh_preview()
+            self._refresh_editor()
+            self._update_statusbar()
+            self.statusBar().showMessage(f"Project loaded: {path}", 3000)
+        except Exception as e:
+            QMessageBox.critical(self, "Open Error", f"Could not open project:\n{e}")
 
     def _on_manual_size_changed(self):
         """Update sticker size from manual input."""
