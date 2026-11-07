@@ -480,7 +480,7 @@ class StickerScene(QGraphicsScene):
                 # Other slots: render STATIC preview of sticker content
                 try:
                     from core.printer import draw_sticker_with_template
-                    render_dpi = 300
+                    render_dpi = 600  # match first sticker quality exactly
                     render_scale = render_dpi / 25.4
                     sticker_w_render = int(self.template.sticker_w_mm * render_scale)
                     sticker_h_render = int(self.template.sticker_h_mm * render_scale)

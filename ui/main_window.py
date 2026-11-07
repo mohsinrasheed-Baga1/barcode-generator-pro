@@ -43,7 +43,7 @@ from ui.print_setup_dialog import PrintSetupDialog
 
 
 APP_TITLE = "Barcode Generator Pro"
-APP_VERSION = "5.0.0"
+APP_VERSION = "5.1.0"
 
 
 class ZoomableGraphicsView(QGraphicsView):
@@ -695,18 +695,22 @@ class MainWindow(QMainWindow):
                             template_to_json(self.template))
 
     def _live_update(self):
-        """Live update the preview when form fields change — no need to click Add to Sheet."""
-        # Build sample data from current form inputs
+        """Live update — typing in form fields updates ALL stickers in real-time."""
         data = self._build_sample_data()
-        # If no items in queue, use live data for preview
         if not self.current_items:
-            if hasattr(self, 'editor_scene') and self.editor_scene:
-                self.editor_scene.sample_data = data
-                self._refresh_editor()
+            # Auto-create items so preview shows content immediately
+            lay = self._current_layout()
+            n_slots = total_slots(lay)
+            for i in range(n_slots):
+                self.current_items.append(dict(data))
         else:
-            # Update first item with live data
-            self.current_items[0].update(data)
-            self._refresh_preview()
+            # Update ALL items with current form data (all stickers same)
+            for item in self.current_items:
+                item.update(data)
+        # Refresh editor (updates all sticker previews)
+        if hasattr(self, 'editor_scene') and self.editor_scene:
+            self.editor_scene.sample_data = data
+        self._refresh_preview()
 
     def _toggle_element(self, element_id: str, enabled: bool):
         """Enable/disable an element in the template."""
@@ -807,11 +811,8 @@ class MainWindow(QMainWindow):
         self._refresh_preview()
 
     def on_fill_sheet_clicked(self):
-        """Duplicate the first item to fill all sticker slots on the current sheet."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first, then click Fill Sheet.")
-            return
+        """Duplicate the first item to fill all sticker slots."""
+        self._ensure_items()
         lay = self._current_layout()
         slots = total_slots(lay)
         first = self.current_items[0]
@@ -1157,12 +1158,20 @@ class MainWindow(QMainWindow):
             i = j
 
     # ----------------------------------------------- print (CUSTOM DIALOG — FIX)
+    def _ensure_items(self):
+        """Auto-create items from current form data if queue is empty.
+        This removes the need for 'Add to Sheet' — print directly."""
+        if not self.current_items:
+            data = self._build_sample_data()
+            lay = self._current_layout()
+            n_slots = total_slots(lay)
+            for i in range(n_slots):
+                self.current_items.append(dict(data))
+        return True
+
     def on_print_clicked(self):
         """Print button — shows print summary then PrintSetupDialog."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first.")
-            return
+        self._ensure_items()
         lay = self._current_layout()
 
         # Print summary dialog — shows count, layout, and order
@@ -1306,10 +1315,7 @@ class MainWindow(QMainWindow):
     def on_quick_print_clicked(self):
         """Quick Print — uses the system default printer, no dialog.
         Best for when you just want to send to your default printer."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first.")
-            return
+        self._ensure_items()
         lay = self._current_layout()
 
         # Get default printer
@@ -1375,10 +1381,7 @@ class MainWindow(QMainWindow):
 
     def on_preview_clicked(self):
         """Preview using QPrintPreviewDialog."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first.")
-            return
+        self._ensure_items()
         lay = self._current_layout()
         try:
             printer = QPrinter(QPrinter.PrinterResolution)
@@ -1411,10 +1414,7 @@ class MainWindow(QMainWindow):
 
     def on_save_pdf_clicked(self):
         """Save as PDF — always works, no printer needed."""
-        if not self.current_items:
-            QMessageBox.warning(self, "Empty",
-                                "Please add at least one sticker first.")
-            return
+        self._ensure_items()
         lay = self._current_layout()
         default_name = f"barcodes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         path, _ = QFileDialog.getSaveFileName(
